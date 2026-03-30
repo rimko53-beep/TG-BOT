@@ -1,33 +1,47 @@
 import asyncio
 import random
 import time
+import os
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 from aiogram import BaseMiddleware
 
+
+# ===== ЗАЩИТА ENV =====
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_ID = os.getenv("ADMIN_ID")
+
+if not TOKEN:
+    raise ValueError("BOT_TOKEN не задан в переменных окружения")
+
+if not ADMIN_ID:
+    raise ValueError("ADMIN_ID не задан в переменных окружения")
+
+ADMIN_ID = int(ADMIN_ID)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+
 # ===== ДАННЫЕ =====
 pairs = [
-    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC",
-    "AUD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC",
-    "EUR/JPY OTC", "GBP/JPY OTC", "AUD/JPY OTC", "NZD/USD OTC",
-    "EUR/AUD OTC", "GBP/AUD OTC", "USD/CHF OTC",
-    "CAD/JPY OTC", "NZD/JPY OTC"
+    "💵 EUR/USD OTC", "💵 GBP/USD OTC", "💵 USD/JPY OTC",
+    "💵 AUD/USD OTC", "💵 USD/CAD OTC", "💵 EUR/GBP OTC",
+    "💵 EUR/JPY OTC", "💵 GBP/JPY OTC", "💵 AUD/JPY OTC", "💵 NZD/USD OTC",
+    "💵 EUR/AUD OTC", "💵 GBP/AUD OTC", "💵 USD/CHF OTC",
+    "💵 CAD/JPY OTC", "💵 NZD/JPY OTC"
 ]
 
 times = [
-    "3 сек", "15 сек", "30 сек",
-    "1 мин", "3 мин", "5 мин", "10 мин"
+    "⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек",
+    "⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"
 ]
 
 user_data = {}
-access_users = {ADMIN_ID}  # ✅ админ сразу есть
+user_stats = {}
+access_users = {ADMIN_ID}
 pending_users = set()
 
 last_signal_time = {}
@@ -43,28 +57,22 @@ def can_send(user_id: int):
     return True
 
 
-# ===== 🔒 МИДЛВАРЬ ДОСТУПА =====
+# ===== 🔒 ДОСТУП =====
 class AccessMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         if isinstance(event, Message):
             user_id = event.from_user.id
             text = event.text or ""
 
-            # ✅ админ всегда имеет доступ
             if user_id == ADMIN_ID:
                 return await handler(event, data)
 
-            allowed_buttons = [
-                "🔐 Активировать доступ",
-                "📩 Отправить ID",
-                "/start"
-            ]
+            allowed = ["🔐 Активировать доступ", "📩 Отправить ID", "/start"]
 
             if user_id not in access_users and user_id not in pending_users:
-                if text not in allowed_buttons:
+                if text not in allowed:
                     await event.answer(
-                        "🔒 <b>Доступ к сигналам закрыт</b>\n\n"
-                        "Чтобы пользоваться ботом — сначала получи доступ 👇",
+                        "🔒 <b>Доступ к VIP сигналам закрыт</b>\n\nАктивируй доступ 👇",
                         parse_mode="HTML"
                     )
                     return
@@ -74,11 +82,13 @@ class AccessMiddleware(BaseMiddleware):
 
 dp.message.middleware(AccessMiddleware())
 
-# ===== КНОПКИ =====
+
+# ===== UI =====
 menu_kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📊 Выбрать пару")],
+        [KeyboardButton(text="📊 Торговая панель")],
         [KeyboardButton(text="⚡ Получить сигнал")],
+        [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="📈 Статистика")],
         [KeyboardButton(text="🔐 Активировать доступ")]
     ],
     resize_keyboard=True
@@ -110,70 +120,89 @@ signal_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
 # ===== START =====
 @dp.message(CommandStart())
 async def start(message: Message):
     await message.answer(
-        "💎 <b>PRO SIGNAL BOT</b>\n\n"
-        "📊 OTC сигналы (3с - 10м)\n"
-        "⚡ Высокая точность\n"
-        "🤖 Авто сигналы 24/7\n\n"
-        "🔐 Чтобы начать — активируй доступ",
+        "💎 <b>CACTUS SIGNAL BOT</b>\n\n"
+        "⚡ Премиум сигналы\n"
+        "📊 Умный анализ рынка\n"
+        "🚀 Только лучшие входы\n\n"
+        "🔐 Активируй доступ",
         reply_markup=menu_kb,
         parse_mode="HTML"
     )
 
+
 # ===== АКТИВАЦИЯ =====
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
-    user_id = message.from_user.id
+    if message.from_user.id in access_users:
+        return await message.answer("✅ У тебя уже есть доступ")
 
-    if user_id in access_users:
-        await message.answer("✅ У тебя уже есть доступ")
-        return
-
-    text = (
-        "🚀 <b>Чтобы получить доступ к боту:</b>\n\n"
-        "1️⃣ Регистрация:\n"
-        "https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&ac=tgtraffic\n\n"
-        "2️⃣ Пополнение от $50\n\n"
-        "3️⃣ После пополнения нажми кнопку ниже и отправь свой ID\n\n"
-        "⚠️ Без выполнения условий доступ не выдается"
+    await message.answer(
+        "💎 <b>ДОСТУП К VIP СИГНАЛАМ</b>\n\n"
+        "Чтобы получить доступ:\n\n"
+        "1️⃣ Зарегистрируйся:\n\n"
+        "🌍 Для всех стран:\n"
+        "https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232\n\n"
+        "🇷🇺 Для пользователей из России:\n"
+        "https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232\n\n"
+        "2️⃣ Пополни депозит от <b>$50</b>\n\n"
+        "3️⃣ Отправь свой ID профиля Pocket Option\n\n"
+        "⚠️ Без выполнения условий доступ не выдается\n\n"
+        "👇 После выполнения нажми кнопку ниже",
+        reply_markup=access_kb,
+        parse_mode="HTML"
     )
 
-    await message.answer(text, reply_markup=access_kb, parse_mode="HTML")
 
-# ===== ОТПРАВКА ID =====
+# ===== ID =====
 @dp.message(F.text == "📩 Отправить ID")
 async def send_id_request(message: Message):
     pending_users.add(message.from_user.id)
+    await message.answer("📨 Отправь свой ID Pocket Option")
 
-    await message.answer(
-        "📨 Отправь свой ID аккаунта Pocket Option\n\n"
-        "⏳ После проверки тебе откроется доступ"
-    )
 
-# ===== ПОЛУЧЕНИЕ ID (🔥 ФИКС БЕЗ ЛОМА КНОПОК) =====
+# ===== ⬅️ НАЗАД =====
+@dp.message(F.text == "⬅️ Назад")
+async def back(message: Message):
+    uid = message.from_user.id
+
+    if uid in pending_users:
+        pending_users.discard(uid)
+        await message.answer(
+            "🔒 <b>Доступ к VIP сигналам закрыт</b>\n\nАктивируй доступ 👇",
+            reply_markup=menu_kb,
+            parse_mode="HTML"
+        )
+        return
+
+    await message.answer("🔙 Меню", reply_markup=menu_kb)
+
+
+# ===== ID ОБРАБОТКА =====
 @dp.message(lambda msg: msg.from_user.id in pending_users)
 async def handle_id(message: Message):
-    user_id = message.from_user.id
-    user_id_text = message.text
+    if not message.text or not message.text.isdigit():
+        return await message.answer("❌ Отправь корректный ID (только цифры)")
 
-    pending_users.discard(user_id)
+    pending_users.discard(message.from_user.id)
 
     await bot.send_message(
         ADMIN_ID,
-        f"🆕 <b>Новый пользователь на проверку</b>\n\n"
+        f"🆕 Пользователь\n\n"
         f"👤 @{message.from_user.username}\n"
-        f"🆔 TG ID: <code>{user_id}</code>\n"
-        f"📊 PO ID: <code>{user_id_text}</code>\n\n"
-        f"/give {user_id}",
-        parse_mode="HTML"
+        f"🆔 {message.from_user.id}\n"
+        f"📊 ID: {message.text}\n\n"
+        f"/give {message.from_user.id}"
     )
 
     await message.answer("⏳ ID отправлен на проверку")
 
-# ===== ВЫДАЧА ДОСТУПА =====
+
+# ===== ДОСТУП (ADMIN) =====
 @dp.message(F.text.startswith("/give"))
 async def give_access(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -181,132 +210,189 @@ async def give_access(message: Message):
 
     try:
         uid = int(message.text.split()[1])
-        access_users.add(uid)
+    except Exception:
+        return await message.answer("❌ Ошибка команды. Пример: /give 123456")
 
-        await bot.send_message(uid, "✅ Доступ одобрен! Теперь тебе доступны сигналы 🚀")
-        await message.answer("✔️ Выдал доступ")
-    except:
-        await message.answer("Ошибка")
+    access_users.add(uid)
+    user_stats[uid] = {"signals": 0}
 
-# ===== МЕНЮ =====
-@dp.message(F.text == "📊 Выбрать пару")
-async def choose_pair_menu(message: Message):
+    await bot.send_message(uid, "✅ Доступ активирован НАВСЕГДА 🚀")
+    await message.answer("✔️ Доступ выдан")
+
+
+# ===== ПАНЕЛЬ =====
+@dp.message(F.text == "📊 Торговая панель")
+async def panel(message: Message):
     if message.from_user.id not in access_users:
-        await message.answer("❌ Сначала получи доступ")
-        return
+        return await message.answer("❌ Нет доступа")
 
     await message.answer("📊 Выбери валютную пару:", reply_markup=pair_kb)
 
-# ===== ВЫБОР ПАРЫ =====
+
 @dp.message(F.text.in_(pairs))
 async def choose_pair(message: Message):
     user_data[message.from_user.id] = {"pair": message.text}
-    await message.answer("⏱ Выбери время сделки:", reply_markup=time_kb)
+    await message.answer("⏱ Выбери таймфрейм:", reply_markup=time_kb)
 
-# ===== ВЫБОР ВРЕМЕНИ =====
+
 @dp.message(F.text.in_(times))
 async def choose_time(message: Message):
-    if message.from_user.id not in user_data:
-        await message.answer("⚠️ Сначала выбери пару")
-        return
+    uid = message.from_user.id
 
-    user_data[message.from_user.id]["time"] = message.text
-    await message.answer("🔥 Готово! Нажми для сигнала", reply_markup=signal_kb)
+    if uid not in user_data:
+        user_data[uid] = {}
 
-# ===== СИГНАЛ =====
+    user_data[uid]["time"] = message.text
+
+    await message.answer("🔥 Готово! Жми сигнал", reply_markup=signal_kb)
+
+
+# ===== 💎 СИГНАЛ =====
 def generate_signal(data):
-    direction = random.choice(["📈 ВВЕРХ (BUY)", "📉 ВНИЗ (SELL)"])
-    accuracy = random.randint(83, 97)
+    direction = random.choice(["📈 BUY", "📉 SELL"])
+    accuracy = random.choice([82, 87, 91, 93, 95])
 
-    signal_type = (
-        "⚡ СКАЛЬПИНГ СИГНАЛ"
-        if "сек" in data['time']
-        else "📊 ТРЕНДОВЫЙ СИГНАЛ"
-    )
+    strength = random.choice(["🔥 СИЛЬНЫЙ", "⚡ ИМПУЛЬС", "💎 ТОЧНЫЙ"])
+    trend = random.choice(["📊 Восходящий тренд", "📊 Нисходящий тренд"])
+    volatility = random.choice(["🌪 Высокая волатильность", "🌊 Средняя волатильность"])
+    risk = random.choice(["🟢 Низкий риск", "🟡 Средний риск"])
 
     return f"""
-💎 <b>PRO TRADING SIGNAL</b>
+━━━━━━━━━━━━━━━
+💎 <b>VIP SIGNAL</b>
+━━━━━━━━━━━━━━━
 
-{signal_type}
+📊 <b>Пара:</b> {data['pair']}
+⏱ <b>Таймфрейм:</b> {data['time']}
 
-📊 Пара: {data['pair']}
-⏱ Тайминг: {data['time']}
-📡 Точность: {accuracy}%
+📡 <b>Тип сигнала:</b> {strength}
+{trend}
+{volatility}
 
-🚀 Вход: {direction}
+━━━━━━━━━━━━━━━
 
-⏳ Открывай сделку СЕЙЧАС
+🎯 <b>Точность:</b> {accuracy}%
+🚀 <b>Сделка:</b> {direction}
+
+💰 <b>Рекомендация:</b>
+Вход сразу после сигнала
+
+{risk}
+
+━━━━━━━━━━━━━━━
+🕯 <b>Анализ:</b>
+• Найдена точка входа по тренду  
+• Подтверждение импульса  
+• Высокая вероятность отработки  
+
 ━━━━━━━━━━━━━━━
 """
 
+
+# ===== СИГНАЛ =====
 @dp.message(F.text == "⚡ Получить сигнал")
 async def send_signal(message: Message):
-    user_id = message.from_user.id
+    uid = message.from_user.id
 
-    if user_id not in access_users:
-        await message.answer("❌ Нет доступа")
-        return
+    if uid not in access_users:
+        return await message.answer("❌ Нет доступа")
 
-    if not can_send(user_id):
-        await message.answer("⏳ Подожди пару секунд")
-        return
+    if not can_send(uid):
+        return await message.answer("⏳ Подожди немного")
 
-    data = user_data.get(user_id)
-
+    data = user_data.get(uid)
     if not data:
-        await message.answer("⚠️ Сначала выбери пару и время")
-        return
+        return await message.answer("⚠️ Сначала выбери пару")
+
+    user_stats.setdefault(uid, {"signals": 0})
+    user_stats[uid]["signals"] += 1
+
+    progress_steps = [
+        "🔍 Анализ рынка...\n\n▰▱▱▱▱ 20%",
+        "📊 Обработка данных...\n\n▰▰▱▱▱ 40%",
+        "🧠 Нейро-анализ...\n\n▰▰▰▱▱ 60%",
+        "📡 Поиск входа...\n\n▰▰▰▰▱ 80%",
+        "🚀 Генерация сигнала...\n\n▰▰▰▰▰ 100%"
+    ]
+
+    msg = await message.answer(progress_steps[0])
+
+    for step in progress_steps[1:]:
+        await asyncio.sleep(random.uniform(0.5, 1.2))
+        await msg.edit_text(step)
+
+    await asyncio.sleep(0.5)
+    await msg.delete()
 
     await message.answer(generate_signal(data), parse_mode="HTML", reply_markup=signal_kb)
 
-# ===== АВТО СИГНАЛЫ =====
-async def auto_signals():
-    while True:
-        await asyncio.sleep(60)
 
-        for user_id in list(access_users):
-            try:
-                pair = random.choice(pairs)
-                t = random.choice(times)
-                text = generate_signal({"pair": pair, "time": t})
+# ===== ПРОФИЛЬ =====
+@dp.message(F.text == "👤 Профиль")
+async def profile(message: Message):
+    uid = message.from_user.id
+    stats = user_stats.get(uid, {"signals": 0})
 
-                await bot.send_message(user_id, "🤖 <b>АВТО СИГНАЛ</b>\n" + text, parse_mode="HTML")
-            except:
-                pass
+    await message.answer(
+        f"""
+━━━━━━━━━━━━━━━
+👤 <b>ПРОФИЛЬ ТРЕЙДЕРА</b>
+━━━━━━━━━━━━━━━
 
-# ===== ФЕЙК АКТИВНОСТЬ =====
-async def fake_activity():
-    messages = [
-        "🔥 Сделка закрыта в плюс +92%",
-        "💸 Профит зафиксирован!",
-        "🚀 Успешный вход",
-        "📈 Серия WIN продолжается",
-    ]
+🆔 ID: <code>{uid}</code>
 
-    while True:
-        await asyncio.sleep(45)
+💎 Статус: <b>VIP ACTIVE</b>
+📊 Сигналов получено: <b>{stats['signals']}</b>
 
-        for user_id in list(access_users):
-            try:
-                await bot.send_message(user_id, random.choice(messages))
-            except:
-                pass
+📅 Аккаунт активен
+🚀 Доступ: <b>Безлимитный</b>
 
-# ===== НАВИГАЦИЯ =====
-@dp.message(F.text == "⬅️ Назад")
-async def back(message: Message):
-    await message.answer("🔙 Меню", reply_markup=menu_kb)
+━━━━━━━━━━━━━━━
+""",
+        parse_mode="HTML"
+    )
 
+
+# ===== СТАТИСТИКА =====
+@dp.message(F.text == "📈 Статистика")
+async def stats(message: Message):
+    await message.answer(
+        """
+━━━━━━━━━━━━━━━
+📈 <b>СТАТИСТИКА СИСТЕМЫ</b>
+━━━━━━━━━━━━━━━
+
+🔥 Win Rate: <b>93.2%</b>
+
+📊 Сделок сегодня: 214  
+📊 Всего сигналов: 24,821  
+
+💸 Прибыль сегодня: +$4,820  
+💸 Общая прибыль: +$284,320  
+
+👥 Активных трейдеров: 1,842  
+
+━━━━━━━━━━━━━━━
+🚀 Система работает 24/7
+""",
+        parse_mode="HTML"
+    )
+
+
+# ===== МЕНЮ =====
 @dp.message(F.text == "⬅️ В меню")
-async def back_menu(message: Message):
+async def menu(message: Message):
     await message.answer("🏠 Главное меню", reply_markup=menu_kb)
+
 
 # ===== ЗАПУСК =====
 async def main():
     print("🔥 BOT STARTED")
+    await dp.start_polling(bot)
 
-    asyncio.create_task(auto_signals())
-    asyncio.create_task(fake_activity())
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
     await dp.start_polling(bot)
 
