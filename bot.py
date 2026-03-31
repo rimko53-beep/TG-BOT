@@ -103,7 +103,6 @@ def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None
         if sub_type is not None:
             cursor.execute("UPDATE users SET sub_type = %s WHERE user_id = %s", (sub_type, user_id))
         if sub_expires is not None or (sub_type == 'free'): 
-            # Если передали sub_expires или сбрасываем на free (чтобы обнулить дату)
             cursor.execute("UPDATE users SET sub_expires = %s WHERE user_id = %s", (sub_expires, user_id))
             
         conn.commit()
@@ -116,7 +115,6 @@ init_db()
 
 # ===== CRYPTO BOT API =====
 async def create_invoice(amount, plan_name):
-    # Если используешь тестовую сеть, замени pay.crypt.bot на testnet-pay.crypt.bot
     url = "https://pay.crypt.bot/api/createInvoice" 
     headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
     payload = {
@@ -377,7 +375,6 @@ async def get_signal(message: Message):
         daily = 0
         db_update_user(uid, daily=0, date=today)
     
-    # --- ОБНОВЛЕННЫЙ ТЕКСТ РИСК-МЕНЕДЖМЕНТА С ПОДПИСКАМИ ---
     sub_type = u['sub_type']
     current_limit = SUBSCRIPTION_PLANS[sub_type]['limit']
 
@@ -410,7 +407,7 @@ async def get_signal(message: Message):
 
     last_click_time[uid] = time.time()
     
-    # --- АНИМАЦИЯ АНАЛИЗА ПРО УРОВНЯ ---
+    # --- АНИМАЦИЯ АНАЛИЗА ---
     progress_msg = await message.answer("⬛️⬛️⬛️⬛️⬛️ [0%]\n📡 <i>Подключение к потоку котировок...</i>", parse_mode="HTML")
     await asyncio.sleep(0.7)
     await progress_msg.edit_text("🟩⬛️⬛️⬛️⬛️ [25%]\n📊 <i>Сбор данных с осцилляторов (RSI, Stochastic)...</i>", parse_mode="HTML")
