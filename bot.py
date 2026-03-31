@@ -155,13 +155,23 @@ class AccessMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             uid = event.from_user.id
             text = event.text or ""
-            if uid == ADMIN_ID: return await handler(event, data)
-            user_info = db_get_user(uid)
+            
+            # Админу доступно всё
+            if uid == ADMIN_ID: 
+                return await handler(event, data)
+            
+            # Список разрешенных команд, которые работают без лицензии
             allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "👤 Профиль", "📈 Статистика"]
+            
+            if text in allowed:
+                return await handler(event, data)
+                
+            # Проверка доступа для всех остальных действий
+            user_info = db_get_user(uid)
             if not user_info["has_access"] and uid not in pending_users:
-                if text not in allowed:
-                    await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
-                    return
+                await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
+                return
+                
         return await handler(event, data)
 
 dp.message.middleware(AccessMiddleware())
@@ -436,7 +446,31 @@ async def check_status(callback: CallbackQuery):
 @dp.callback_query(F.data == "back_profile")
 async def back_to_profile(callback: CallbackQuery):
     await callback.message.delete()
-    await profile(callback.message)
+    # Эмулируем вызов профиля через сообщение
+    u = db_get_user(callback.from_user.id)
+    rank = get_rank(u["signals"])
+    sub_text = "FREE"
+    limit = 30
+    if u['sub_type'] == 'junior': sub_text = "JUNIOR ⚡"; limit = 60
+    elif u['sub_type'] == 'pro': sub_text = "PRO 🔥"; limit = 100
+    expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n" if u['sub_expires'] else ""
+    
+    await callback.message.answer(
+        f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Ваш ID: <code>{callback.from_user.id}</code>\n"
+        f"🏆 Уровень: <b>{rank}</b>\n"
+        f"💎 Подписка: <b>{sub_text}</b>\n"
+        f"{expires_info}\n"
+        f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
+        f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
+        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
+        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
+        ]),
+        parse_mode="HTML"
+    )
 
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
@@ -452,6 +486,7 @@ async def stats(message: Message):
     )
 
 async def main():
+    init_db()
     print("🚀 PRO AI BOT STARTED SUCCESSFULLY")
     await dp.start_polling(bot)
 
