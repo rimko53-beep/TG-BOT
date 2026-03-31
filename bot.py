@@ -31,8 +31,8 @@ dp = Dispatcher()
 # Лимиты подписок
 SUBSCRIPTION_PLANS = {
     "free": {"limit": 30, "name": "FREE", "price": 0},
-    "junior": {"limit": 60, "name": "JUNIOR", "price": 50, "duration": 14},
-    "pro": {"limit": 100, "name": "PRO", "price": 100, "duration": 14}
+    "junior": {"limit": 60, "name": "JUNIOR", "price": 50, "duration": 7},
+    "pro": {"limit": 100, "name": "PRO", "price": 100, "duration": 7}
 }
 
 # ===== РАБОТА С POSTGRESQL =====
@@ -75,11 +75,21 @@ def db_get_user(user_id):
                 sub_type = 'free'
                 db_update_user(user_id, sub_type='free', sub_expires=None)
 
+            # Проверяем и сбрасываем дневной лимит, если наступил новый день
+            today = datetime.now().strftime("%Y-%m-%d")
+            daily_count = row['daily_signals']
+            last_date = row['last_signal_date'] or ""
+
+            if last_date != "" and last_date != today:
+                daily_count = 0
+                last_date = today
+                db_update_user(user_id, daily=0, date=today)
+
             return {
                 "has_access": row['has_access'],
                 "signals": row['total_signals'],
-                "daily_count": row['daily_signals'],
-                "last_date": row['last_signal_date'] or "",
+                "daily_count": daily_count,
+                "last_date": last_date,
                 "sub_type": sub_type,
                 "sub_expires": row['sub_expires']
             }
@@ -120,7 +130,7 @@ async def create_invoice(amount, plan_name):
     payload = {
         "asset": "USDT",
         "amount": str(amount),
-        "description": f"Подписка {plan_name} на 14 дней",
+        "description": f"Подписка {plan_name} на 7 дней",
         "paid_btn_name": "callback",
         "paid_btn_url": "https://t.me/CryptoBot"
     }
@@ -189,8 +199,8 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 
 def get_sub_kb():
     buttons = [
-        [InlineKeyboardButton(text="JUNIOR - 50$ / 14 дней", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="PRO - 100$ / 14 дней", callback_data="buy_pro")]
+        [InlineKeyboardButton(text="JUNIOR - 50$ / 7 дней", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="PRO - 100$ / 7 дней", callback_data="buy_pro")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -202,12 +212,12 @@ async def sub_menu(message: Message):
     
     text = (
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━\n"
         f"Текущий тариф: <b>{u['sub_type'].upper()}</b>\n"
         f"Лимит сделок: <b>{limit} в день</b>\n\n"
         "<b>Доступные тарифы:</b>\n"
-        "🔹 <b>JUNIOR:</b> до 60 сделок в день (50$ / 14 дней)\n"
-        "🔸 <b>PRO:</b> до 100 сделок в день (100$ / 14 дней)\n\n"
+        "🔹 <b>JUNIOR:</b> до 60 сделок в день (50$ / 7 дней)\n"
+        "🔸 <b>PRO:</b> до 100 сделок в день (100$ / 7 дней)\n\n"
         "<i>Выберите подписку для автоматической оплаты через CryptoBot (USDT):</i>"
     )
     await message.answer(text, reply_markup=get_sub_kb(), parse_mode="HTML")
@@ -242,11 +252,11 @@ async def process_check(callback: CallbackQuery):
     is_paid = await check_invoice(inv_id)
     
     if is_paid:
-        expiry = datetime.now() + timedelta(days=14)
+        expiry = datetime.now() + timedelta(days=7)
         db_update_user(callback.from_user.id, sub_type=plan_key, sub_expires=expiry)
         await callback.message.edit_text(
             f"🎉 <b>Оплата успешно подтверждена!</b>\n\n"
-            f"Тариф <b>{plan_key.upper()}</b> активирован на 14 дней.\n"
+            f"Тариф <b>{plan_key.upper()}</b> активирован на 7 дней.\n"
             f"Ваш новый лимит: <b>{SUBSCRIPTION_PLANS[plan_key]['limit']}</b> сигналов в день.",
             parse_mode="HTML"
         )
@@ -262,7 +272,7 @@ async def start(message: Message):
     
     start_text = (
         "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━\n"
         "💸 <b>Преврати трейдинг в систему с математическим перевесом!</b>\n\n"
         "Наш нейросетевой алгоритм анализирует паттерны Price Action, "
         "объемы и волатильность рынка, обеспечивая WinRate сделок <b>до 92.4%</b>.\n\n"
@@ -277,7 +287,7 @@ async def activate(message: Message):
     if user_info["has_access"]: return await message.answer("✅ <b>СТАТУС:</b> ЛИЦЕНЗИЯ АКТИВНА\nВам доступны все модули терминала.", parse_mode="HTML")
     await message.answer(
         "💎 <b>ПОЛУЧЕНИЕ VIP-ЛИЦЕНЗИИ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━\n"
         "1️⃣ <b>Регистрация торгового счета:</b>\n"
         "▫️ Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Официальный шлюз)</a>\n"
         "▫️ RU/СНГ: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Зеркало)</a>\n\n"
@@ -372,6 +382,7 @@ async def get_signal(message: Message):
     
     today = datetime.now().strftime("%Y-%m-%d")
     daily = u["daily_count"]
+    # Сброс лимита продублирован для гарантии, хотя db_get_user теперь тоже это делает
     if u["last_date"] != today:
         daily = 0
         db_update_user(uid, daily=0, date=today)
@@ -383,7 +394,7 @@ async def get_signal(message: Message):
         if sub_type == "free":
             risk_text = (
                 "🛑 <b>ЛИМИТ БЕСПЛАТНЫХ СИГНАЛОВ ИСЧЕРПАН</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
+                "━━━━━━━━━━━━━━━━━\n"
                 f"Вы достигли лимита (<b>{current_limit} сделок</b> за сегодня).\n\n"
                 "Если хотите получать больше сигналов (до 60 или 100 в день), оформите подписку <b>JUNIOR</b> или <b>PRO</b> в меню бота!\n\n"
                 "⏳ <i>Или дождитесь обновления лимита завтра.</i>"
@@ -391,7 +402,7 @@ async def get_signal(message: Message):
         else:
             risk_text = (
                 "🛑 <b>ЛИМИТ ТОРГОВЫХ СЕССИЙ</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
+                "━━━━━━━━━━━━━━━━━\n"
                 f"Ваш дневной лимит по подписке {sub_type.upper()} (<b>{current_limit} сделок</b>) исчерпан.\n\n"
                 "Система защиты капитала активирована для предотвращения тильта. "
                 "Алгоритм возобновит работу завтра.\n\n"
@@ -427,12 +438,12 @@ async def get_signal(message: Message):
     
     res = (
         f"⚡️ <b>ТОРГОВЫЙ СИГНАЛ ГОТОВ</b> ⚡️\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━\n"
         f"📊 <b>Актив:</b> {data['pair']}\n"
         f"⏱ <b>Время сделки:</b> {data['time']}\n"
         f"🧠 <b>Уверенность ИИ:</b> {confidence}%\n\n"
         f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━\n"
         f"⚠️ <i>Не забудьте про Money Management! (1-3% от баланса)</i>"
     )
     
@@ -449,7 +460,7 @@ async def profile(message: Message):
 
     await message.answer(
         f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━\n"
         f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
         f"🏆 Уровень: <b>{rank}</b>\n\n"
         f"💎 <b>ТОРГОВАЯ ПОДПИСКА:</b>\n"
@@ -466,7 +477,7 @@ async def profile(message: Message):
 async def stats(message: Message):
     await message.answer(
         "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━\n"
         "📈 Средний WinRate: <b>92.4%</b>\n"
         "🟢 Плюсовых сделок: <b>1 842</b>\n"
         "🔴 Минусовых сделок: <b>151</b>\n"
