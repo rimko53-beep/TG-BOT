@@ -288,8 +288,8 @@ async def activate(message: Message):
         "💎 <b>ПОЛУЧЕНИЕ VIP-ЛИЦЕНЗИИ</b>\n"
         "━━━━━━━━━━━━━━━━━\n"
         "1️⃣ <b>Регистрация торгового счета:</b>\n"
-        "▫️ Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Официальный шлюз)</a>\n"
-        "▫️ RU/СНГ: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Зеркало)</a>\n\n"
+        "▫️ Global (Ссылка для всех стран): <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Официальный шлюз)</a>\n"
+        "▫️ RU/СНГ (Для людей из России и СНГ): <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Зеркало)</a>\n\n"
         "2️⃣ <b>Депозит:</b> от <b>$50</b> (для соблюдения риск-менеджмента 1-5% на сделку)\n"
         "3️⃣ <b>Синхронизация:</b> Жми кнопку ниже и отправь свой <b>ID Pocket Option</b>\n\n"
         "🛡 <i>После проверки ИИ подключит ваш аккаунт к пулу сигналов.</i>", 
