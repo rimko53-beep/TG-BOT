@@ -157,7 +157,8 @@ pairs = [
 times = ["⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек", "⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
 user_temp_data = {} 
-pending_users = set()
+pending_users = set() # Для ввода ID
+pending_support = set() # Для сообщений в поддержку
 last_click_time = {}
 
 def get_rank(count):
@@ -174,8 +175,8 @@ class AccessMiddleware(BaseMiddleware):
             text = event.text or ""
             if uid == ADMIN_ID: return await handler(event, data)
             user_info = db_get_user(uid)
-            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "/vip", "/help"]
-            if not user_info["has_access"] and uid not in pending_users:
+            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "/vip", "/help", "🆘 Поддержка"]
+            if not user_info["has_access"] and uid not in pending_users and uid not in pending_support:
                 if text not in allowed:
                     await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
                     return
@@ -188,13 +189,15 @@ menu_kb = ReplyKeyboardMarkup(keyboard=[
     [KeyboardButton(text="📊 Торговая панель")], 
     [KeyboardButton(text="⚡ Получить сигнал")],
     [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="📈 Статистика")], 
-    [KeyboardButton(text="🔐 Активировать доступ"), KeyboardButton(text="💎 Подписка")]
+    [KeyboardButton(text="🔐 Активировать доступ"), KeyboardButton(text="💎 Подписка")],
+    [KeyboardButton(text="🆘 Поддержка")]
 ], resize_keyboard=True)
 
 access_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📩 Отправить ID Pocket Option")], [KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 pair_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=p)] for p in pairs] + [[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 time_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=t)] for t in times] + [[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получить сигнал")], [KeyboardButton(text="⬅️ В меню")]], resize_keyboard=True)
+back_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 
 def get_sub_kb():
     buttons = [
@@ -297,33 +300,69 @@ async def activate(message: Message):
         reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
     )
 
+# --- ОБНОВЛЕННЫЙ ЦЕНТР ПОДДЕРЖКИ ---
 @dp.message(Command("help"))
+@dp.message(F.text == "🆘 Поддержка")
 async def help_cmd(message: Message):
+    pending_support.add(message.from_user.id)
     await message.answer(
         "🆘 <b>ЦЕНТР ПОДДЕРЖКИ</b>\n"
         "━━━━━━━━━━━━━━━━━\n"
-        "Если у вас возникли вопросы по работе терминала, активации лицензии или выводу средств:\n\n"
-        "👤 <b>Техническая поддержка:</b> @ваша_поддержка\n"
+        "Если у вас возникли вопросы по работе терминала или активации лицензии:\n\n"
+        "✍️ <b>Опишите ваш вопрос прямо здесь, одним сообщением.</b>\n"
+        "Ваше обращение будет мгновенно передано администратору.\n\n"
         "📖 <b>Инструкция:</b> /start\n\n"
         "<i>Мы работаем 24/7 для вашего профита!</i>", 
+        reply_markup=back_kb,
         parse_mode="HTML"
     )
 
 @dp.message(F.text == "📩 Отправить ID Pocket Option")
 async def ask_id(message: Message):
     pending_users.add(message.from_user.id)
-    await message.answer("⌨️ <b>Введите Ваш цифровой ID профиля Pocket Option:</b>\n<i>(Только цифры, без пробелов и букв)</i>", parse_mode="HTML")
+    await message.answer("⌨️ <b>Введите Ваш цифровой ID профиля Pocket Option:</b>\n<i>(Только цифры, без пробелов и букв)</i>", reply_markup=back_kb, parse_mode="HTML")
 
 @dp.message(F.text == "⬅️ Назад")
 @dp.message(F.text == "⬅️ В меню")
 async def go_back(message: Message):
     pending_users.discard(message.from_user.id)
+    pending_support.discard(message.from_user.id)
     await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=menu_kb, parse_mode="HTML")
 
+# --- ОБРАБОТКА ТЕКСТОВЫХ ПИСЕМ В ПОДДЕРЖКУ ---
+@dp.message(lambda msg: msg.from_user.id in pending_support)
+async def process_support_message(message: Message):
+    if message.text == "⬅️ Назад":
+        pending_support.discard(message.from_user.id)
+        return await go_back(message)
+    
+    uid = message.from_user.id
+    username = message.from_user.username or "Нет юзернейма"
+    
+    # Отправляем админу
+    await bot.send_message(
+        ADMIN_ID,
+        f"📩 <b>НОВОЕ ОБРАЩЕНИЕ В ПОДДЕРЖКУ</b>\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"👤 От: @{username}\n"
+        f"🆔 ID: <code>{uid}</code>\n"
+        f"📝 Сообщение: {message.text}",
+        parse_mode="HTML"
+    )
+    
+    pending_support.discard(uid)
+    await message.answer("✅ <b>Ваше сообщение отправлено!</b>\nАдминистратор рассмотрит ваше обращение в ближайшее время.", reply_markup=menu_kb, parse_mode="HTML")
+
+# --- ОБРАБОТКА ВВОДА ID ---
 @dp.message(lambda msg: msg.from_user.id in pending_users)
 async def process_id(message: Message):
+    if message.text == "⬅️ Назад":
+        pending_users.discard(message.from_user.id)
+        return await go_back(message)
+
     if not message.text or not message.text.isdigit():
         return await message.answer("❌ <b>Ошибка валидации.</b> Введите только ЦИФРЫ вашего ID Pocket Option.")
+    
     uid = message.from_user.id
     pending_users.discard(uid)
     await bot.send_message(
