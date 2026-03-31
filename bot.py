@@ -69,23 +69,19 @@ def db_get_user(user_id):
         cursor.close()
         conn.close()
         if row:
-            # Проверяем на пустые значения из-за старых записей в БД
-            sub_type = row.get('sub_type')
-            if not sub_type:
-                sub_type = 'free'
-                
             # Проверяем, не истекла ли подписка
-            if row.get('sub_expires') and row['sub_expires'] < datetime.now():
+            sub_type = row['sub_type']
+            if row['sub_expires'] and row['sub_expires'] < datetime.now():
                 sub_type = 'free'
                 db_update_user(user_id, sub_type='free', sub_expires=None)
 
             return {
-                "has_access": row.get('has_access') or False,
-                "signals": row.get('total_signals') or 0,
-                "daily_count": row.get('daily_signals') or 0,
-                "last_date": row.get('last_signal_date') or "",
+                "has_access": row['has_access'],
+                "signals": row['total_signals'],
+                "daily_count": row['daily_signals'],
+                "last_date": row['last_signal_date'] or "",
                 "sub_type": sub_type,
-                "sub_expires": row.get('sub_expires')
+                "sub_expires": row['sub_expires']
             }
     except Exception as e:
         print(f"Ошибка чтения из БД: {e}")
@@ -192,8 +188,8 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 
 def get_sub_kb():
     buttons = [
-        [InlineKeyboardButton(text="JUNIOR - 50$ / 14 дней", callback_query_data="buy_junior")],
-        [InlineKeyboardButton(text="PRO - 100$ / 14 дней", callback_query_data="buy_pro")]
+        [InlineKeyboardButton(text="JUNIOR - 50$ / 14 дней", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="PRO - 100$ / 14 дней", callback_data="buy_pro")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -201,16 +197,12 @@ def get_sub_kb():
 @dp.message(F.text == "💎 Подписка")
 async def sub_menu(message: Message):
     u = db_get_user(message.from_user.id)
-    sub_type = u.get('sub_type', 'free')
-    if sub_type not in SUBSCRIPTION_PLANS:
-        sub_type = 'free'
-        
-    limit = SUBSCRIPTION_PLANS[sub_type]['limit']
+    limit = SUBSCRIPTION_PLANS[u['sub_type']]['limit']
     
     text = (
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"Текущий тариф: <b>{sub_type.upper()}</b>\n"
+        f"Текущий тариф: <b>{u['sub_type'].upper()}</b>\n"
         f"Лимит сделок: <b>{limit} в день</b>\n\n"
         "<b>Доступные тарифы:</b>\n"
         "🔹 <b>JUNIOR:</b> до 60 сделок в день (50$ / 14 дней)\n"
@@ -231,7 +223,7 @@ async def process_buy(callback: CallbackQuery):
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Оплатить (USDT)", url=invoice_url)],
-            [InlineKeyboardButton(text="✅ Проверить оплату", callback_query_data=f"check_{invoice_id}_{plan_key}")]
+            [InlineKeyboardButton(text="✅ Проверить оплату", callback_data=f"check_{invoice_id}_{plan_key}")]
         ])
         
         await callback.message.edit_text(
@@ -383,10 +375,7 @@ async def get_signal(message: Message):
         daily = 0
         db_update_user(uid, daily=0, date=today)
     
-    sub_type = u.get('sub_type', 'free')
-    if sub_type not in SUBSCRIPTION_PLANS:
-        sub_type = 'free'
-        
+    sub_type = u['sub_type']
     current_limit = SUBSCRIPTION_PLANS[sub_type]['limit']
 
     if daily >= current_limit:
@@ -454,13 +443,8 @@ async def get_signal(message: Message):
 async def profile(message: Message):
     u = db_get_user(message.from_user.id)
     rank = get_rank(u["signals"])
-    
-    sub_type = u.get('sub_type', 'free')
-    if sub_type not in SUBSCRIPTION_PLANS:
-        sub_type = 'free'
-        
-    sub_limit = SUBSCRIPTION_PLANS[sub_type]["limit"]
-    expiry_str = u['sub_expires'].strftime("%d.%m.%Y %H:%M") if u.get('sub_expires') else "Не ограничено"
+    sub_limit = SUBSCRIPTION_PLANS[u["sub_type"]]["limit"]
+    expiry_str = u['sub_expires'].strftime("%d.%m.%Y %H:%M") if u['sub_expires'] else "Не ограничено"
 
     await message.answer(
         f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
@@ -468,7 +452,7 @@ async def profile(message: Message):
         f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
         f"🏆 Уровень: <b>{rank}</b>\n\n"
         f"💎 <b>ТОРГОВАЯ ПОДПИСКА:</b>\n"
-        f"▫️ Тариф: <b>{sub_type.upper()}</b>\n"
+        f"▫️ Тариф: <b>{u['sub_type'].upper()}</b>\n"
         f"▫️ Истекает: <b>{expiry_str}</b>\n\n"
         f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
         f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
