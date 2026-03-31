@@ -211,7 +211,6 @@ async def set_time(message: Message):
     uid = message.from_user.id
     if uid not in user_temp_data: user_temp_data[uid] = {}
     user_temp_data[uid]["time"] = message.text
-    # ЗАМЕНЕНО: Готово к работе -> Настройки сохранены
     await message.answer(f"✅ <b>Настройки сохранены:</b>\n{user_temp_data[uid]['pair']} | {user_temp_data[uid]['time']}", reply_markup=signal_kb, parse_mode="HTML")
 
 @dp.message(F.text == "⚡ Получить сигнал")
@@ -238,10 +237,13 @@ async def get_signal(message: Message):
 
     last_click_time[uid] = time.time()
     
-    progress_msg = await message.answer("🔍 <b>Анализируем рынок...</b>", parse_mode="HTML")
-    await asyncio.sleep(1.2)
-    await progress_msg.edit_text("📡 <b>Поиск лучшей точки входа...</b>", parse_mode="HTML")
-    await asyncio.sleep(1.0)
+    # --- АНИМАЦИЯ ЗАГРУЗКИ ---
+    progress_msg = await message.answer("🔍 <b>Анализируем рынок... [25%]</b>", parse_mode="HTML")
+    await asyncio.sleep(0.8)
+    await progress_msg.edit_text("📡 <b>Поиск лучшей точки входа... [75%]</b>", parse_mode="HTML")
+    await asyncio.sleep(0.8)
+    await progress_msg.edit_text("💎 <b>Генерация сигнала... [100%]</b>", parse_mode="HTML")
+    await asyncio.sleep(0.4)
     
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     
