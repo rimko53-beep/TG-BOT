@@ -100,7 +100,7 @@ times = ["⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек", "⏱ 1 мин", "⏱ 
 user_temp_data = {} 
 pending_users = set()
 last_click_time = {}
-DAILY_LIMIT = 30  # Изменено с 50 на 30
+DAILY_LIMIT = 30 
 
 def get_rank(count):
     if count <= 50: return "🌱 Новичок (Retail)"
@@ -220,7 +220,7 @@ async def admin_block(message: Message):
         try:
             await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML")
         except:
-            pass # Юзер мог заблокировать бота
+            pass 
         await message.answer(f"🚫 Доступ для пользователя <code>{target}</code> успешно ЗАБЛОКИРОВАН.", parse_mode="HTML")
     except: await message.answer("⚠️ Ошибка. Формат: <code>/block ID</code>", parse_mode="HTML")
 
@@ -260,8 +260,15 @@ async def get_signal(message: Message):
         daily = 0
         db_update_user(uid, daily=0, date=today)
     
+    # --- ИСПРАВЛЕННЫЙ БЛОК ЛИМИТА ---
     if daily >= DAILY_LIMIT:
-        return await message.answer(f"🛑 <b>РИСК-МЕНЕДЖМЕНТ:</b> Дневной лимит ({DAILY_LIMIT} сделок) исчерпан. Защита от тильта активирована. Возвращайтесь завтра.")
+        limit_text = (
+            f"🛑 <b>РИСК-МЕНЕДЖМЕНТ:</b>\n"
+            f"Дневной лимит (<b>{DAILY_LIMIT} сделок</b>) исчерпан.\n\n"
+            f"Защита от тильта активирована. Возвращайтесь завтра."
+        )
+        return await message.answer(limit_text, parse_mode="HTML")
+    # --------------------------------
     
     data = user_temp_data.get(uid)
     if not data or "pair" not in data:
@@ -272,7 +279,6 @@ async def get_signal(message: Message):
 
     last_click_time[uid] = time.time()
     
-    # --- АНИМАЦИЯ АНАЛИЗА ПРО УРОВНЯ ---
     progress_msg = await message.answer("⬛️⬛️⬛️⬛️⬛️ [0%]\n📡 <i>Подключение к потоку котировок...</i>", parse_mode="HTML")
     await asyncio.sleep(0.7)
     await progress_msg.edit_text("🟩⬛️⬛️⬛️⬛️ [25%]\n📊 <i>Сбор данных с осцилляторов (RSI, Stochastic)...</i>", parse_mode="HTML")
@@ -335,6 +341,10 @@ async def stats(message: Message):
 
 async def main():
     print("🚀 PRO AI BOT STARTED SUCCESSFULLY")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
