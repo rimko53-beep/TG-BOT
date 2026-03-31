@@ -17,7 +17,7 @@ from psycopg2.extras import RealDictCursor
 # ===== КОНФИГУРАЦИЯ =====
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
-DATABASE_URL = os.getenv("DATABASE_URL") # Railway подставит это сам
+DATABASE_URL = os.getenv("DATABASE_URL") 
 
 if not TOKEN or not ADMIN_ID:
     raise ValueError("Проверьте BOT_TOKEN и ADMIN_ID в переменных Railway!")
@@ -28,60 +28,69 @@ dp = Dispatcher()
 
 # ===== РАБОТА С POSTGRESQL =====
 def get_db_connection():
-    # Подключение к базе Railway
+    # Подключение к базе Railway с SSL (обязательно для облака)
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            has_access BOOLEAN DEFAULT FALSE,
-            total_signals INTEGER DEFAULT 0,
-            daily_signals INTEGER DEFAULT 0,
-            last_signal_date TEXT
-        )
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                has_access BOOLEAN DEFAULT FALSE,
+                total_signals INTEGER DEFAULT 0,
+                daily_signals INTEGER DEFAULT 0,
+                last_signal_date TEXT
+            )
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка инициализации БД: {e}")
 
 def db_get_user(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT has_access, total_signals, daily_signals, last_signal_date FROM users WHERE user_id = %s", (user_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if row:
-        return {
-            "has_access": row['has_access'],
-            "signals": row['total_signals'],
-            "daily_count": row['daily_signals'],
-            "last_date": row['last_signal_date'] or ""
-        }
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT has_access, total_signals, daily_signals, last_signal_date FROM users WHERE user_id = %s", (user_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            return {
+                "has_access": row['has_access'],
+                "signals": row['total_signals'],
+                "daily_count": row['daily_signals'],
+                "last_date": row['last_signal_date'] or ""
+            }
+    except Exception as e:
+        print(f"Ошибка чтения из БД: {e}")
     return {"has_access": False, "signals": 0, "daily_count": 0, "last_date": ""}
 
 def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
-    
-    if has_access is not None:
-        cursor.execute("UPDATE users SET has_access = %s WHERE user_id = %s", (has_access, user_id))
-    if signals is not None:
-        cursor.execute("UPDATE users SET total_signals = %s WHERE user_id = %s", (signals, user_id))
-    if daily is not None:
-        cursor.execute("UPDATE users SET daily_signals = %s WHERE user_id = %s", (daily, user_id))
-    if date is not None:
-        cursor.execute("UPDATE users SET last_signal_date = %s WHERE user_id = %s", (date, user_id))
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+        
+        if has_access is not None:
+            cursor.execute("UPDATE users SET has_access = %s WHERE user_id = %s", (has_access, user_id))
+        if signals is not None:
+            cursor.execute("UPDATE users SET total_signals = %s WHERE user_id = %s", (signals, user_id))
+        if daily is not None:
+            cursor.execute("UPDATE users SET daily_signals = %s WHERE user_id = %s", (daily, user_id))
+        if date is not None:
+            cursor.execute("UPDATE users SET last_signal_date = %s WHERE user_id = %s", (date, user_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка обновления БД: {e}")
 
-# Запускаем создание таблицы
+# Инициализация таблицы при старте
 init_db()
 
 # ===== ДАННЫЕ И КЛАВИАТУРЫ =====
@@ -243,10 +252,6 @@ async def stats(message: Message):
 
 async def main():
     print("🚀 Бот запущен с PostgreSQL")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
