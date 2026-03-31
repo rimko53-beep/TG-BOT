@@ -103,7 +103,7 @@ last_click_time = {}
 DAILY_LIMIT = 50
 
 def get_rank(count):
-    if count <= 50: return "🌱 Новичок (Retale)"
+    if count <= 50: return "🌱 Новичок (Retail)"
     if count <= 150: return "📊 Трейдер (Prop)"
     if count <= 350: return "📈 Про-Трейдер (Institutional)"
     return "👑 Маркет-Мейкер (Whale)"
@@ -142,14 +142,10 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 
 @dp.message(CommandStart())
 async def start(message: Message):
+    # Обновляем БД синхронно (для старта это нормально)
     db_update_user(message.from_user.id)
     
-    # Анимация инициализации терминала
-    init_msg = await message.answer("🔄 <b>Инициализация торгового ядра...</b>", parse_mode="HTML")
-    await asyncio.sleep(0.5)
-    await init_msg.edit_text("🔄 <b>Синхронизация котировок с серверами OTC...</b>", parse_mode="HTML")
-    await asyncio.sleep(0.5)
-    
+    # Отправляем приветствие моментально, без зависаний
     start_text = (
         "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -159,7 +155,7 @@ async def start(message: Message):
         "📌 <i>Используй профессиональную аналитику для скальпинга и дейтрейдинга на Pocket Option.</i>\n\n"
         "🛠 <b>Статус системы:</b> ОНЛАЙН 🟢"
     )
-    await init_msg.edit_text(start_text, reply_markup=menu_kb, parse_mode="HTML")
+    await message.answer(start_text, reply_markup=menu_kb, parse_mode="HTML")
 
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
