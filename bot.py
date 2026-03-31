@@ -2,10 +2,11 @@ import asyncio
 import random
 import time
 import os
-from datetime import datetime
+import aiohttp
+from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import CommandStart
 from aiogram import BaseMiddleware
 from aiogram.exceptions import TelegramBadRequest
@@ -18,6 +19,7 @@ from psycopg2.extras import RealDictCursor
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 DATABASE_URL = os.getenv("DATABASE_URL") 
+CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN") # Добавьте в переменные Railway!
 
 if not TOKEN or not ADMIN_ID:
     raise ValueError("Проверьте BOT_TOKEN и ADMIN_ID в переменных Railway!")
@@ -40,9 +42,14 @@ def init_db():
                 has_access BOOLEAN DEFAULT FALSE,
                 total_signals INTEGER DEFAULT 0,
                 daily_signals INTEGER DEFAULT 0,
-                last_signal_date TEXT
+                last_signal_date TEXT,
+                sub_type TEXT DEFAULT 'free',
+                sub_expires TIMESTAMP
             )
         """)
+        # Автоматическое добавление новых колонок, если их нет
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_type TEXT DEFAULT 'free'")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_expires TIMESTAMP")
         conn.commit()
         cursor.close()
         conn.close()
@@ -53,22 +60,30 @@ def db_get_user(user_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT has_access, total_signals, daily_signals, last_signal_date FROM users WHERE user_id = %s", (user_id,))
+        cursor.execute("SELECT has_access, total_signals, daily_signals, last_signal_date, sub_type, sub_expires FROM users WHERE user_id = %s", (user_id,))
         row = cursor.fetchone()
         cursor.close()
         conn.close()
         if row:
+            sub_type = row['sub_type']
+            # Проверка просрочки подписки
+            if row['sub_expires'] and datetime.now() > row['sub_expires']:
+                sub_type = 'free'
+                db_update_user(user_id, sub_type='free')
+
             return {
                 "has_access": row['has_access'],
                 "signals": row['total_signals'],
                 "daily_count": row['daily_signals'],
-                "last_date": row['last_signal_date'] or ""
+                "last_date": row['last_signal_date'] or "",
+                "sub_type": sub_type,
+                "sub_expires": row['sub_expires']
             }
     except Exception as e:
         print(f"Ошибка чтения из БД: {e}")
-    return {"has_access": False, "signals": 0, "daily_count": 0, "last_date": ""}
+    return {"has_access": False, "signals": 0, "daily_count": 0, "last_date": "", "sub_type": "free", "sub_expires": None}
 
-def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None):
+def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None, sub_type=None, sub_expires=None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -81,6 +96,10 @@ def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None
             cursor.execute("UPDATE users SET daily_signals = %s WHERE user_id = %s", (daily, user_id))
         if date is not None:
             cursor.execute("UPDATE users SET last_signal_date = %s WHERE user_id = %s", (date, user_id))
+        if sub_type is not None:
+            cursor.execute("UPDATE users SET sub_type = %s WHERE user_id = %s", (sub_type, user_id))
+        if sub_expires is not None:
+            cursor.execute("UPDATE users SET sub_expires = %s WHERE user_id = %s", (sub_expires, user_id))
         conn.commit()
         cursor.close()
         conn.close()
@@ -88,6 +107,29 @@ def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None
         print(f"Ошибка обновления БД: {e}")
 
 init_db()
+
+# ===== CRYPTO PAY API =====
+async def create_invoice(amount, plan):
+    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    async with aiohttp.ClientSession() as session:
+        data = {
+            "asset": "USDT",
+            "amount": str(amount),
+            "description": f"Subscription {plan.upper()}",
+            "paid_btn_name": "callback"
+        }
+        async with session.post("https://pay.crypt.bot/api/createInvoice", json=data, headers=headers) as resp:
+            return await resp.json()
+
+async def get_invoice_status(invoice_id):
+    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    async with aiohttp.ClientSession() as session:
+        params = {"invoice_ids": invoice_id}
+        async with session.get("https://pay.crypt.bot/api/getInvoices", params=params, headers=headers) as resp:
+            data = await resp.json()
+            if data['ok'] and data['result']['items']:
+                return data['result']['items'][0]['status']
+    return "error"
 
 # ===== ДАННЫЕ И КЛАВИАТУРЫ =====
 pairs = [
@@ -100,7 +142,6 @@ times = ["⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек", "⏱ 1 мин", "⏱ 
 user_temp_data = {} 
 pending_users = set()
 last_click_time = {}
-DAILY_LIMIT = 30 
 
 def get_rank(count):
     if count <= 50: return "🌱 Новичок (Retail)"
@@ -116,7 +157,7 @@ class AccessMiddleware(BaseMiddleware):
             text = event.text or ""
             if uid == ADMIN_ID: return await handler(event, data)
             user_info = db_get_user(uid)
-            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню"]
+            allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "👤 Профиль", "📈 Статистика"]
             if not user_info["has_access"] and uid not in pending_users:
                 if text not in allowed:
                     await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
@@ -143,7 +184,6 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 @dp.message(CommandStart())
 async def start(message: Message):
     db_update_user(message.from_user.id)
-    
     start_text = (
         "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -219,8 +259,7 @@ async def admin_block(message: Message):
         db_update_user(target, has_access=False)
         try:
             await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML")
-        except:
-            pass # Юзер мог заблокировать бота
+        except: pass
         await message.answer(f"🚫 Доступ для пользователя <code>{target}</code> успешно ЗАБЛОКИРОВАН.", parse_mode="HTML")
     except: await message.answer("⚠️ Ошибка. Формат: <code>/block ID</code>", parse_mode="HTML")
 
@@ -259,16 +298,19 @@ async def get_signal(message: Message):
     if u["last_date"] != today:
         daily = 0
         db_update_user(uid, daily=0, date=today)
+
+    # ЛОГИКА ПОДПИСОК
+    limit = 30
+    if u['sub_type'] == 'junior': limit = 60
+    elif u['sub_type'] == 'pro': limit = 100
     
-    # --- ОБНОВЛЕННЫЙ ТЕКСТ РИСК-МЕНЕДЖМЕНТА ---
-    if daily >= DAILY_LIMIT:
+    if daily >= limit:
         risk_text = (
             "🛑 <b>ЛИМИТ ТОРГОВЫХ СЕССИЙ</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"Ваш дневной лимит (<b>{DAILY_LIMIT} сделок</b>) исчерпан.\n\n"
-            "Система защиты капитала активирована для предотвращения тильта. "
-            "Алгоритм возобновит работу завтра.\n\n"
-            "⏳ <i>Отдохните от рынка и возвращайтесь с новыми силами!</i>"
+            f"Ваш дневной лимит (<b>{limit} сделок</b>) исчерпан.\n\n"
+            "Для получения большего количества сигналов, перейдите в <b>Профиль</b> и приобретите подписку Junior или PRO.\n\n"
+            "⏳ <i>Система защиты капитала активирована!</i>"
         )
         return await message.answer(risk_text, parse_mode="HTML")
     
@@ -281,7 +323,6 @@ async def get_signal(message: Message):
 
     last_click_time[uid] = time.time()
     
-    # --- АНИМАЦИЯ АНАЛИЗА ПРО УРОВНЯ ---
     progress_msg = await message.answer("⬛️⬛️⬛️⬛️⬛️ [0%]\n📡 <i>Подключение к потоку котировок...</i>", parse_mode="HTML")
     await asyncio.sleep(0.7)
     await progress_msg.edit_text("🟩⬛️⬛️⬛️⬛️ [25%]\n📊 <i>Сбор данных с осцилляторов (RSI, Stochastic)...</i>", parse_mode="HTML")
@@ -294,7 +335,6 @@ async def get_signal(message: Message):
     await asyncio.sleep(0.4)
     
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
-    
     direction = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
     confidence = random.randint(88, 96)
     
@@ -313,21 +353,90 @@ async def get_signal(message: Message):
     except: pass
     await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
 
+# ===== ПРОФИЛЬ И МАГАЗИН =====
 @dp.message(F.text == "👤 Профиль")
 async def profile(message: Message):
     u = db_get_user(message.from_user.id)
     rank = get_rank(u["signals"])
+    
+    sub_text = "FREE"
+    limit = 30
+    if u['sub_type'] == 'junior':
+        sub_text = "JUNIOR ⚡"
+        limit = 60
+    elif u['sub_type'] == 'pro':
+        sub_text = "PRO 🔥"
+        limit = 100
+
+    expires_info = ""
+    if u['sub_expires']:
+        expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n"
+
     await message.answer(
         f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
-        f"🏆 Уровень: <b>{rank}</b>\n\n"
+        f"🏆 Уровень: <b>{rank}</b>\n"
+        f"💎 Подписка: <b>{sub_text}</b>\n"
+        f"{expires_info}\n"
         f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
         f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
-        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {DAILY_LIMIT}</b>\n\n"
+        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
         f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
+        ]),
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data == "shop")
+async def shop_menu(callback: CallbackQuery):
+    text = (
+        "💳 <b>ТАРИФНЫЕ ПЛАНЫ СИСТЕМЫ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔹 <b>JUNIOR</b>\n"
+        "▫️ Цена: <b>50$ / 14 дней</b>\n"
+        "▫️ Лимит: <b>60 сделок в день</b>\n\n"
+        "🔸 <b>PRO</b>\n"
+        "▫️ Цена: <b>100$ / 14 дней</b>\n"
+        "▫️ Лимит: <b>100 сделок в день</b>\n\n"
+        "<i>Оплата производится в USDT через CryptoBot.</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Купить JUNIOR ($50)", callback_query_data="pay_junior")],
+        [InlineKeyboardButton(text="Купить PRO ($100)", callback_query_data="pay_pro")],
+        [InlineKeyboardButton(text="⬅️ Назад в профиль", callback_query_data="back_profile")]
+    ])
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("pay_"))
+async def create_pay(callback: CallbackQuery):
+    plan = callback.data.split("_")[1]
+    amount = 50 if plan == "junior" else 100
+    res = await create_invoice(amount, plan)
+    
+    if res['ok']:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💸 Перейти к оплате", url=res['result']['pay_url'])],
+            [InlineKeyboardButton(text="✅ Проверить оплату", callback_query_data=f"check_{res['result']['invoice_id']}_{plan}")]
+        ])
+        await callback.message.edit_text(f"🚀 <b>Счет на оплату {plan.upper()} сформирован!</b>\nСумма: {amount} USDT", reply_markup=kb, parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("check_"))
+async def check_status(callback: CallbackQuery):
+    _, inv_id, plan = callback.data.split("_")
+    status = await get_invoice_status(inv_id)
+    if status == "paid":
+        expire_date = datetime.now() + timedelta(days=14)
+        db_update_user(callback.from_user.id, sub_type=plan, sub_expires=expire_date)
+        await callback.message.edit_text(f"🎉 <b>ПОЗДРАВЛЯЕМ!</b>\nПодписка <b>{plan.upper()}</b> успешно активирована на 14 дней.")
+    else:
+        await callback.answer("❌ Оплата не найдена.", show_alert=True)
+
+@dp.callback_query(F.data == "back_profile")
+async def back_to_profile(callback: CallbackQuery):
+    await callback.message.delete()
+    await profile(callback.message)
 
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
