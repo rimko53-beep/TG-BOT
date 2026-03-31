@@ -184,14 +184,26 @@ class AccessMiddleware(BaseMiddleware):
 
 dp.message.middleware(AccessMiddleware())
 
-# ===== КЛАВИАТУРЫ =====
-menu_kb = ReplyKeyboardMarkup(keyboard=[
-    [KeyboardButton(text="📊 Торговая панель")], 
-    [KeyboardButton(text="⚡ Получить сигнал")],
-    [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="📈 Статистика")], 
-    [KeyboardButton(text="🔐 Активировать доступ"), KeyboardButton(text="💎 Подписка")],
-    [KeyboardButton(text="🆘 Поддержка")]
-], resize_keyboard=True)
+# ===== КЛАВИАТУРЫ (ДИНАМИЧЕСКИЕ) =====
+
+def get_main_menu(has_access: bool):
+    # Основные кнопки, которые есть всегда
+    keyboard = [
+        [KeyboardButton(text="📊 Торговая панель")], 
+        [KeyboardButton(text="⚡ Получить сигнал")],
+        [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="📈 Статистика")]
+    ]
+    
+    # Кнопка активации добавляется только если доступа нет
+    row_access = []
+    if not has_access:
+        row_access.append(KeyboardButton(text="🔐 Активировать доступ"))
+    
+    row_access.append(KeyboardButton(text="💎 Подписка"))
+    keyboard.append(row_access)
+    keyboard.append([KeyboardButton(text="🆘 Поддержка")])
+    
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 access_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📩 Отправить ID Pocket Option")], [KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 pair_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=p)] for p in pairs] + [[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
@@ -271,6 +283,7 @@ async def process_check(callback: CallbackQuery):
 @dp.message(CommandStart())
 async def start(message: Message):
     db_update_user(message.from_user.id)
+    u = db_get_user(message.from_user.id)
     
     start_text = (
         "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
@@ -281,7 +294,7 @@ async def start(message: Message):
         "📌 <i>Используй профессиональную аналитику для скальпинга и дейтрейдинга на Pocket Option.</i>\n\n"
         "🛠 <b>Статус системы:</b> ОНЛАЙН 🟢"
     )
-    await message.answer(start_text, reply_markup=menu_kb, parse_mode="HTML")
+    await message.answer(start_text, reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 @dp.message(Command("vip"))
 @dp.message(F.text == "🔐 Активировать доступ")
@@ -327,7 +340,8 @@ async def ask_id(message: Message):
 async def go_back(message: Message):
     pending_users.discard(message.from_user.id)
     pending_support.discard(message.from_user.id)
-    await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=menu_kb, parse_mode="HTML")
+    u = db_get_user(message.from_user.id)
+    await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 # --- ОБРАБОТКА ТЕКСТОВЫХ ПИСЕМ В ПОДДЕРЖКУ ---
 @dp.message(lambda msg: msg.from_user.id in pending_support)
@@ -351,7 +365,8 @@ async def process_support_message(message: Message):
     )
     
     pending_support.discard(uid)
-    await message.answer("✅ <b>Ваше сообщение отправлено!</b>\nАдминистратор рассмотрит ваше обращение в ближайшее время.", reply_markup=menu_kb, parse_mode="HTML")
+    u = db_get_user(uid)
+    await message.answer("✅ <b>Ваше сообщение отправлено!</b>\nАдминистратор рассмотрит ваше обращение в ближайшее время.", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 # --- ОБРАБОТКА ВВОДА ID ---
 @dp.message(lambda msg: msg.from_user.id in pending_users)
@@ -375,7 +390,8 @@ async def process_id(message: Message):
         f"🚫 Заблокировать: <code>/block {uid}</code>", 
         parse_mode="HTML"
     )
-    await message.answer("💾 <b>ID принят в обработку.</b>\nОжидайте подтверждения верификации от технического отдела.", reply_markup=menu_kb, parse_mode="HTML")
+    u = db_get_user(uid)
+    await message.answer("💾 <b>ID принят в обработку.</b>\nОжидайте подтверждения верификации от технического отдела.", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 # ===== АДМИН ПАНЕЛЬ =====
 @dp.message(F.text.startswith("/give"))
@@ -384,7 +400,8 @@ async def admin_give(message: Message):
     try:
         target = int(message.text.split()[1])
         db_update_user(target, has_access=True)
-        await bot.send_message(target, "🚀 <b>СИСТЕМА: VIP ДОСТУП АКТИВИРОВАН</b>\nТерминал разблокирован. Вам доступны профессиональные сигналы для профита!", parse_mode="HTML", reply_markup=menu_kb)
+        # При активации отправляем юзеру обновленное меню без кнопки доступа
+        await bot.send_message(target, "🚀 <b>СИСТЕМА: VIP ДОСТУП АКТИВИРОВАН</b>\nТерминал разблокирован. Вам доступны профессиональные сигналы для профита!", parse_mode="HTML", reply_markup=get_main_menu(True))
         await message.answer(f"✅ Доступ для пользователя <code>{target}</code> успешно АКТИВИРОВАН.", parse_mode="HTML")
     except: await message.answer("⚠️ Ошибка. Формат: <code>/give ID</code>", parse_mode="HTML")
 
@@ -395,7 +412,8 @@ async def admin_block(message: Message):
         target = int(message.text.split()[1])
         db_update_user(target, has_access=False)
         try:
-            await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML")
+            # При блокировке возвращаем кнопку активации
+            await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML", reply_markup=get_main_menu(False))
         except:
             pass # Юзер мог заблокировать бота
         await message.answer(f"🚫 Доступ для пользователя <code>{target}</code> успешно ЗАБЛОКИРОВАН.", parse_mode="HTML")
