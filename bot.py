@@ -28,10 +28,10 @@ ADMIN_ID = int(ADMIN_ID)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Лимиты подписок
+# Лимиты подписок (ОБНОВЛЕНО: Free 20, Junior 50, Pro 100)
 SUBSCRIPTION_PLANS = {
-    "free": {"limit": 30, "name": "FREE", "price": 0},
-    "junior": {"limit": 60, "name": "JUNIOR", "price": 50, "duration": 7},
+    "free": {"limit": 20, "name": "FREE", "price": 0},
+    "junior": {"limit": 50, "name": "JUNIOR", "price": 50, "duration": 7},
     "pro": {"limit": 100, "name": "PRO", "price": 100, "duration": 7}
 }
 
@@ -215,7 +215,7 @@ async def sub_menu(message: Message):
         f"Текущий тариф: <b>{u['sub_type'].upper()}</b>\n"
         f"Лимит сделок: <b>{limit} в день</b>\n\n"
         "<b>Доступные тарифы:</b>\n"
-        "🔹 <b>JUNIOR:</b> до 60 сделок в день (50$ / 7 дней)\n"
+        "🔹 <b>JUNIOR:</b> до 50 сделок в день (50$ / 7 дней)\n"
         "🔸 <b>PRO:</b> до 100 сделок в день (100$ / 7 дней)\n\n"
         "<i>Выберите подписку для автоматической оплаты через CryptoBot (USDT):</i>"
     )
@@ -396,7 +396,7 @@ async def get_signal(message: Message):
                 "🛑 <b>ЛИМИТ БЕСПЛАТНЫХ СИГНАЛОВ ИСЧЕРПАН</b>\n"
                 "━━━━━━━━━━━━━━━━━\n"
                 f"Вы достигли лимита (<b>{current_limit} сделок</b> за сегодня).\n\n"
-                "Если хотите получать больше сигналов (до 60 или 100 в день), оформите подписку <b>JUNIOR</b> или <b>PRO</b> в меню бота!\n\n"
+                "Если хотите получать больше сигналов (до 50 или 100 в день), оформите подписку <b>JUNIOR</b> или <b>PRO</b> в меню бота!\n\n"
                 "⏳ <i>Или дождитесь обновления лимита завтра.</i>"
             )
         else:
