@@ -84,7 +84,7 @@ def db_update_user(user_id, has_access=None, signals=None, daily=None, date=None
 # Запускаем создание таблицы
 init_db()
 
-# ===== ДАННЫЕ И КЛАВИАТУРЫ (Оставляем как было) =====
+# ===== ДАННЫЕ И КЛАВИАТУРЫ =====
 pairs = [
     "💵 EUR/USD OTC", "💵 GBP/USD OTC", "💵 USD/JPY OTC", "💵 AUD/USD OTC", "💵 USD/CAD OTC", 
     "💵 EUR/GBP OTC", "💵 EUR/JPY OTC", "💵 GBP/JPY OTC", "💵 AUD/JPY OTC", "💵 NZD/USD OTC",
@@ -149,14 +149,14 @@ async def activate(message: Message):
         "🌍 Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option</a>\n"
         "🇷🇺 RU: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option RU</a>\n\n"
         "2️⃣ Пополни баланс от <b>$50</b>\n"
-        "3️⃣ Отправь ID\n\n"
+        "3️⃣ <b>Отправь ID профиля Pocket Option</b>\n\n"
         "👇 Нажми кнопку ниже", reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
     )
 
 @dp.message(F.text == "📩 Отправить ID")
 async def ask_id(message: Message):
     pending_users.add(message.from_user.id)
-    await message.answer("📝 <b>Введите Ваш цифровой ID:</b>", parse_mode="HTML")
+    await message.answer("📝 <b>Введите Ваш цифровой ID профиля Pocket Option:</b>", parse_mode="HTML")
 
 @dp.message(F.text == "⬅️ Назад")
 @dp.message(F.text == "⬅️ В меню")
@@ -243,6 +243,10 @@ async def stats(message: Message):
 
 async def main():
     print("🚀 Бот запущен с PostgreSQL")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
