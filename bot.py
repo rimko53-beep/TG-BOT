@@ -18,7 +18,7 @@ from psycopg2.extras import RealDictCursor
 # ===== КОНФИГУРАЦИЯ =====
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
-DATABASE_URL = os.getenv("DATABASE_URL") 
+DATABASE_URL = os.getenv("DATABASE_URL")
 CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN")
 
 if not TOKEN or not ADMIN_ID:
@@ -200,6 +200,63 @@ async def start(message: Message):
     )
     await message.answer(start_text, reply_markup=menu_kb, parse_mode="HTML")
 
+@dp.message(F.text == "⬅️ Назад")
+@dp.message(F.text == "⬅️ В меню")
+async def go_back(message: Message):
+    pending_users.discard(message.from_user.id)
+    await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=menu_kb, parse_mode="HTML")
+
+# --- ПЕРЕНЕСЕНО ВЫШЕ, ЧТОБЫ КНОПКИ РАБОТАЛИ ВСЕГДА ---
+@dp.message(F.text == "👤 Профиль")
+async def profile(message: Message):
+    pending_users.discard(message.from_user.id) # Сбрасываем ожидание ID при переходе в профиль
+    u = db_get_user(message.from_user.id)
+    rank = get_rank(u["signals"])
+    
+    sub_text = "FREE"
+    limit = 30
+    if u['sub_type'] == 'junior':
+        sub_text = "JUNIOR ⚡"
+        limit = 60
+    elif u['sub_type'] == 'pro':
+        sub_text = "PRO 🔥"
+        limit = 100
+
+    expires_info = ""
+    if u['sub_expires']:
+        expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n"
+
+    await message.answer(
+        f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
+        f"🏆 Уровень: <b>{rank}</b>\n"
+        f"💎 Подписка: <b>{sub_text}</b>\n"
+        f"{expires_info}\n"
+        f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
+        f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
+        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
+        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
+        ]),
+        parse_mode="HTML"
+    )
+
+@dp.message(F.text == "📈 Статистика")
+async def stats(message: Message):
+    await message.answer(
+        "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📈 Средний WinRate: <b>92.4%</b>\n"
+        "🟢 Плюсовых сделок: <b>1 842</b>\n"
+        "🔴 Минусовых сделок: <b>151</b>\n"
+        "🔁 Возвратов: <b>24</b>\n\n"
+        "⚙️ <i>Сводка формируется автоматически на базе пула всех торговых сессий наших пользователей на платформе Pocket Option.</i>", 
+        parse_mode="HTML"
+    )
+# ----------------------------------------------------
+
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
     user_info = db_get_user(message.from_user.id)
@@ -220,12 +277,6 @@ async def activate(message: Message):
 async def ask_id(message: Message):
     pending_users.add(message.from_user.id)
     await message.answer("⌨️ <b>Введите Ваш цифровой ID профиля Pocket Option:</b>\n<i>(Только цифры, без пробелов и букв)</i>", parse_mode="HTML")
-
-@dp.message(F.text == "⬅️ Назад")
-@dp.message(F.text == "⬅️ В меню")
-async def go_back(message: Message):
-    pending_users.discard(message.from_user.id)
-    await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=menu_kb, parse_mode="HTML")
 
 @dp.message(lambda msg: msg.from_user.id in pending_users)
 async def process_id(message: Message):
@@ -344,55 +395,20 @@ async def get_signal(message: Message):
     
     res = (
         f"⚡️ <b>ТОРГОВЫЙ СИГНАЛ ГОТОВ</b> ⚡️\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 <b>Актив:</b> {data['pair']}\n"
         f"⏱ <b>Время сделки:</b> {data['time']}\n"
         f"🧠 <b>Уверенность ИИ:</b> {confidence}%\n\n"
         f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ <i>Не забудьте про Money Management! (1-3% от баланса)</i>"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <i>Не забудьте про Money Management! (1-3% от баланса)</i>"
     )
     
     try: await progress_msg.delete()
     except: pass
     await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
 
-# ===== ПРОФИЛЬ И МАГАЗИН =====
-@dp.message(F.text == "👤 Профиль")
-async def profile(message: Message):
-    u = db_get_user(message.from_user.id)
-    rank = get_rank(u["signals"])
-    
-    sub_text = "FREE"
-    limit = 30
-    if u['sub_type'] == 'junior':
-        sub_text = "JUNIOR ⚡"
-        limit = 60
-    elif u['sub_type'] == 'pro':
-        sub_text = "PRO 🔥"
-        limit = 100
-
-    expires_info = ""
-    if u['sub_expires']:
-        expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n"
-
-    await message.answer(
-        f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
-        f"🏆 Уровень: <b>{rank}</b>\n"
-        f"💎 Подписка: <b>{sub_text}</b>\n"
-        f"{expires_info}\n"
-        f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
-        f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
-        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
-        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
-        ]),
-        parse_mode="HTML"
-    )
-
+# ===== МАГАЗИН =====
 @dp.callback_query(F.data == "shop")
 async def shop_menu(callback: CallbackQuery):
     text = (
@@ -449,8 +465,8 @@ async def back_to_profile(callback: CallbackQuery):
     expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n" if u['sub_expires'] else ""
     
     await callback.message.answer(
-        f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        "👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         f"🆔 Ваш ID: <code>{callback.from_user.id}</code>\n"
         f"🏆 Уровень: <b>{rank}</b>\n"
         f"💎 Подписка: <b>{sub_text}</b>\n"
@@ -462,19 +478,6 @@ async def back_to_profile(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
         ]),
-        parse_mode="HTML"
-    )
-
-@dp.message(F.text == "📈 Статистика")
-async def stats(message: Message):
-    await message.answer(
-        "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "📈 Средний WinRate: <b>92.4%</b>\n"
-        "🟢 Плюсовых сделок: <b>1 842</b>\n"
-        "🔴 Минусовых сделок: <b>151</b>\n"
-        "🔁 Возвратов: <b>24</b>\n\n"
-        "⚙️ <i>Сводка формируется автоматически на базе пула всех торговых сессий наших пользователей на платформе Pocket Option.</i>", 
         parse_mode="HTML"
     )
 
