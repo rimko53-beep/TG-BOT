@@ -75,8 +75,8 @@ def db_get_user(user_id):
                 sub_type = 'free'
                 db_update_user(user_id, sub_type='free', sub_expires=None)
 
-            # Проверяем и сбрасываем дневной лимит, если наступил новый день
-            today = datetime.now().strftime("%Y-%m-%d")
+            # --- ИСПРАВЛЕНИЕ ВРЕМЕНИ ДЛЯ RAILWAY (UTC+3) ---
+            today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
             daily_count = row['daily_signals']
             last_date = row['last_signal_date'] or ""
 
@@ -174,7 +174,6 @@ class AccessMiddleware(BaseMiddleware):
             text = event.text or ""
             if uid == ADMIN_ID: return await handler(event, data)
             user_info = db_get_user(uid)
-            # Убрана "💎 Подписка" из списка allowed
             allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню"]
             if not user_info["has_access"] and uid not in pending_users:
                 if text not in allowed:
@@ -380,9 +379,10 @@ async def get_signal(message: Message):
     u = db_get_user(uid)
     if not u["has_access"]: return
     
-    today = datetime.now().strftime("%Y-%m-%d")
+    # --- ИСПРАВЛЕНИЕ ВРЕМЕНИ ДЛЯ RAILWAY (UTC+3) ---
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
-    # Сброс лимита продублирован для гарантии, хотя db_get_user теперь тоже это делает
+    
     if u["last_date"] != today:
         daily = 0
         db_update_user(uid, daily=0, date=today)
