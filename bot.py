@@ -143,7 +143,6 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 @dp.message(CommandStart())
 async def start(message: Message):
     db_update_user(message.from_user.id)
-    # ОБНОВЛЕННЫЙ ТЕКСТ ПРИВЕТСТВИЯ
     await message.answer(
         "🚀 <b>VIP СИГНАЛЫ OTC | Анализ рынка | Высокая точность</b> 📈\n\n"
         "💸 <b>Начни торговать в плюс уже сегодня!</b>\n\n"
@@ -212,7 +211,8 @@ async def set_time(message: Message):
     uid = message.from_user.id
     if uid not in user_temp_data: user_temp_data[uid] = {}
     user_temp_data[uid]["time"] = message.text
-    await message.answer(f"✅ <b>Готово к работе:</b>\n{user_temp_data[uid]['pair']} | {user_temp_data[uid]['time']}", reply_markup=signal_kb, parse_mode="HTML")
+    # ЗАМЕНЕНО: Готово к работе -> Настройки сохранены
+    await message.answer(f"✅ <b>Настройки сохранены:</b>\n{user_temp_data[uid]['pair']} | {user_temp_data[uid]['time']}", reply_markup=signal_kb, parse_mode="HTML")
 
 @dp.message(F.text == "⚡ Получить сигнал")
 async def get_signal(message: Message):
