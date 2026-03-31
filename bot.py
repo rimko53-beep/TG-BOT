@@ -19,7 +19,7 @@ from psycopg2.extras import RealDictCursor
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 DATABASE_URL = os.getenv("DATABASE_URL") 
-CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN") # Добавьте в переменные Railway!
+CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN")
 
 if not TOKEN or not ADMIN_ID:
     raise ValueError("Проверьте BOT_TOKEN и ADMIN_ID в переменных Railway!")
@@ -47,7 +47,6 @@ def init_db():
                 sub_expires TIMESTAMP
             )
         """)
-        # Автоматическое добавление новых колонок, если их нет
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_type TEXT DEFAULT 'free'")
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_expires TIMESTAMP")
         conn.commit()
@@ -66,7 +65,6 @@ def db_get_user(user_id):
         conn.close()
         if row:
             sub_type = row['sub_type']
-            # Проверка просрочки подписки
             if row['sub_expires'] and datetime.now() > row['sub_expires']:
                 sub_type = 'free'
                 db_update_user(user_id, sub_type='free')
@@ -156,17 +154,14 @@ class AccessMiddleware(BaseMiddleware):
             uid = event.from_user.id
             text = event.text or ""
             
-            # Админу доступно всё
             if uid == ADMIN_ID: 
                 return await handler(event, data)
             
-            # Список разрешенных команд, которые работают без лицензии
             allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню", "👤 Профиль", "📈 Статистика"]
             
             if text in allowed:
                 return await handler(event, data)
                 
-            # Проверка доступа для всех остальных действий
             user_info = db_get_user(uid)
             if not user_info["has_access"] and uid not in pending_users:
                 await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
@@ -277,7 +272,7 @@ async def admin_block(message: Message):
 @dp.message(F.text == "📊 Торговая панель")
 async def t_panel(message: Message):
     if not db_get_user(message.from_user.id)["has_access"]: return
-    await message.answer("⚙️ <b>КОНФИКУРАЦИЯ СДЕЛКИ:</b>\nВыберите торговый актив (валютную пару):", reply_markup=pair_kb, parse_mode="HTML")
+    await message.answer("⚙️ <b>КОНФИГУРАЦИЯ СДЕЛКИ:</b>\nВыберите торговый актив (валютную пару):", reply_markup=pair_kb, parse_mode="HTML")
 
 @dp.message(F.text.in_(pairs))
 async def set_pair(message: Message):
@@ -309,7 +304,6 @@ async def get_signal(message: Message):
         daily = 0
         db_update_user(uid, daily=0, date=today)
 
-    # ЛОГИКА ПОДПИСОК
     limit = 30
     if u['sub_type'] == 'junior': limit = 60
     elif u['sub_type'] == 'pro': limit = 100
@@ -445,7 +439,7 @@ async def check_status(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back_profile")
 async def back_to_profile(callback: CallbackQuery):
-    # Исправлено: Сначала редактируем текущее сообщение, чтобы не "висело"
+    await callback.message.delete()
     u = db_get_user(callback.from_user.id)
     rank = get_rank(u["signals"])
     sub_text = "FREE"
@@ -454,7 +448,7 @@ async def back_to_profile(callback: CallbackQuery):
     elif u['sub_type'] == 'pro': sub_text = "PRO 🔥"; limit = 100
     expires_info = f"▫️ Истекает: <b>{u['sub_expires'].strftime('%d.%m.%Y')}</b>\n" if u['sub_expires'] else ""
     
-    text = (
+    await callback.message.answer(
         f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🆔 Ваш ID: <code>{callback.from_user.id}</code>\n"
@@ -464,14 +458,12 @@ async def back_to_profile(callback: CallbackQuery):
         f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
         f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
         f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
-        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}"
+        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
+        ]),
+        parse_mode="HTML"
     )
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💎 Купить подписку / Больше сигналов", callback_query_data="shop")]
-    ])
-    
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
@@ -486,13 +478,10 @@ async def stats(message: Message):
         parse_mode="HTML"
     )
 
+# ===== ЗАПУСК =====
 async def main():
     init_db()
     print("🚀 PRO AI BOT STARTED SUCCESSFULLY")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
