@@ -70,7 +70,7 @@ def db_get_user(user_id):
         conn.close()
         if row:
             # Проверяем, не истекла ли подписка
-            sub_type = row['sub_type']
+            sub_type = row['sub_type'] or 'free'
             if row['sub_expires'] and row['sub_expires'] < datetime.now():
                 sub_type = 'free'
                 db_update_user(user_id, sub_type='free', sub_expires=None)
@@ -197,7 +197,8 @@ def get_sub_kb():
 @dp.message(F.text == "💎 Подписка")
 async def sub_menu(message: Message):
     u = db_get_user(message.from_user.id)
-    limit = SUBSCRIPTION_PLANS[u['sub_type']]['limit']
+    plan_info = SUBSCRIPTION_PLANS.get(u['sub_type'], SUBSCRIPTION_PLANS['free'])
+    limit = plan_info['limit']
     
     text = (
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n"
@@ -217,7 +218,7 @@ async def process_buy(callback: CallbackQuery):
     plan = SUBSCRIPTION_PLANS[plan_key]
     
     res = await create_invoice(plan['price'], plan['name'])
-    if res['ok']:
+    if res.get('ok'):
         invoice_url = res['result']['pay_url']
         invoice_id = res['result']['invoice_id']
         
@@ -251,7 +252,6 @@ async def process_check(callback: CallbackQuery):
         )
     else:
         await callback.answer("❌ Оплата еще не поступила. Попробуйте проверить через минуту.", show_alert=True)
-
 
 # ===== ХЕНДЛЕРЫ =====
 
@@ -375,8 +375,8 @@ async def get_signal(message: Message):
         daily = 0
         db_update_user(uid, daily=0, date=today)
     
-    sub_type = u['sub_type']
-    current_limit = SUBSCRIPTION_PLANS[sub_type]['limit']
+    sub_type = u.get('sub_type', 'free')
+    current_limit = SUBSCRIPTION_PLANS.get(sub_type, SUBSCRIPTION_PLANS['free'])['limit']
 
     if daily >= current_limit:
         if sub_type == "free":
@@ -443,7 +443,7 @@ async def get_signal(message: Message):
 async def profile(message: Message):
     u = db_get_user(message.from_user.id)
     rank = get_rank(u["signals"])
-    sub_limit = SUBSCRIPTION_PLANS[u["sub_type"]]["limit"]
+    limit = SUBSCRIPTION_PLANS.get(u['sub_type'], SUBSCRIPTION_PLANS['free'])['limit']
     expiry_str = u['sub_expires'].strftime("%d.%m.%Y %H:%M") if u['sub_expires'] else "Не ограничено"
 
     await message.answer(
@@ -456,7 +456,7 @@ async def profile(message: Message):
         f"▫️ Истекает: <b>{expiry_str}</b>\n\n"
         f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
         f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
-        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {sub_limit}</b>\n\n"
+        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {limit}</b>\n\n"
         f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
         parse_mode="HTML"
     )
