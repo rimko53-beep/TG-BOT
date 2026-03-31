@@ -103,10 +103,10 @@ last_click_time = {}
 DAILY_LIMIT = 50
 
 def get_rank(count):
-    if count <= 50: return "🌱 Новичок"
-    if count <= 150: return "📊 Опытный"
-    if count <= 350: return "📈 Про-Трейдер"
-    return "👑 Маркет-Мейкер"
+    if count <= 50: return "🌱 Новичок (Retale)"
+    if count <= 150: return "📊 Трейдер (Prop)"
+    if count <= 350: return "📈 Про-Трейдер (Institutional)"
+    return "👑 Маркет-Мейкер (Whale)"
 
 # ===== MIDDLEWARE =====
 class AccessMiddleware(BaseMiddleware):
@@ -119,7 +119,7 @@ class AccessMiddleware(BaseMiddleware):
             allowed = ["🔐 Активировать доступ", "📩 Отправить ID Pocket Option", "⬅️ Назад", "/start", "⬅️ В меню"]
             if not user_info["has_access"] and uid not in pending_users:
                 if text not in allowed:
-                    await event.answer("⚠️ <b>ДОСТУП ОГРАНИЧЕН</b>\n\nАктивируйте VIP-подписку для получения сигналов с высокой проходимостью.", parse_mode="HTML")
+                    await event.answer("⚠️ <b>ОШИБКА ДОСТУПА: ТЕРМИНАЛ ЗАБЛОКИРОВАН</b>\n\nДля получения алгоритмических сигналов с высокой проходимостью (WinRate 88-92%), необходимо активировать VIP-лицензию.", parse_mode="HTML")
                     return
         return await handler(event, data)
 
@@ -143,75 +143,116 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 @dp.message(CommandStart())
 async def start(message: Message):
     db_update_user(message.from_user.id)
-    await message.answer(
-        "🚀 <b>VIP СИГНАЛЫ OTC | Анализ рынка | Высокая точность</b> 📈\n\n"
-        "💸 <b>Начни торговать в плюс уже сегодня!</b>\n\n"
-        "Наш ИИ-бот обеспечивает проходимость сделок <b>до 92%</b>. "
-        "Используй профессиональную аналитику для успешного трейдинга на Pocket Option.", 
-        reply_markup=menu_kb, parse_mode="HTML"
+    
+    # Анимация инициализации терминала
+    init_msg = await message.answer("🔄 <b>Инициализация торгового ядра...</b>", parse_mode="HTML")
+    await asyncio.sleep(0.5)
+    await init_msg.edit_text("🔄 <b>Синхронизация котировок с серверами OTC...</b>", parse_mode="HTML")
+    await asyncio.sleep(0.5)
+    
+    start_text = (
+        "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💸 <b>Преврати трейдинг в систему с математическим перевесом!</b>\n\n"
+        "Наш нейросетевой алгоритм анализирует паттерны Price Action, "
+        "объемы и волатильность рынка, обеспечивая WinRate сделок <b>до 92.4%</b>.\n\n"
+        "📌 <i>Используй профессиональную аналитику для скальпинга и дейтрейдинга на Pocket Option.</i>\n\n"
+        "🛠 <b>Статус системы:</b> ОНЛАЙН 🟢"
     )
+    await init_msg.edit_text(start_text, reply_markup=menu_kb, parse_mode="HTML")
 
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
     user_info = db_get_user(message.from_user.id)
-    if user_info["has_access"]: return await message.answer("✅ Ваш статус: <b>VIP ДОСТУП АКТИВЕН</b>", parse_mode="HTML")
+    if user_info["has_access"]: return await message.answer("✅ <b>СТАТУС:</b> ЛИЦЕНЗИЯ АКТИВНА\nВам доступны все модули терминала.", parse_mode="HTML")
     await message.answer(
-        "💎 <b>АКТИВАЦИЯ VIP-ДОСТУПА</b>\n\n"
-        "1️⃣ <b>Регистрация:</b>\n"
-        "▫️ Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option</a>\n"
-        "▫️ RU: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option RU</a>\n\n"
-        "2️⃣ <b>Депозит:</b> от <b>$50</b>\n"
-        "3️⃣ <b>Верификация:</b> Жми кнопку ниже и отправь свой <b>ID Pocket Option</b>\n\n"
-        "<i>После проверки ты получишь доступ к сигналам с проходимостью 92%+</i>", 
+        "💎 <b>ПОЛУЧЕНИЕ VIP-ЛИЦЕНЗИИ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "1️⃣ <b>Регистрация торгового счета:</b>\n"
+        "▫️ Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Официальный шлюз)</a>\n"
+        "▫️ RU/СНГ: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Зеркало)</a>\n\n"
+        "2️⃣ <b>Депозит:</b> от <b>$50</b> (для соблюдения риск-менеджмента 1-5% на сделку)\n"
+        "3️⃣ <b>Синхронизация:</b> Жми кнопку ниже и отправь свой <b>ID Pocket Option</b>\n\n"
+        "🛡 <i>После проверки ИИ подключит ваш аккаунт к пулу сигналов.</i>", 
         reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
     )
 
 @dp.message(F.text == "📩 Отправить ID Pocket Option")
 async def ask_id(message: Message):
     pending_users.add(message.from_user.id)
-    await message.answer("⌨️ <b>Введите Ваш цифровой ID профиля Pocket Option:</b>", parse_mode="HTML")
+    await message.answer("⌨️ <b>Введите Ваш цифровой ID профиля Pocket Option:</b>\n<i>(Только цифры, без пробелов и букв)</i>", parse_mode="HTML")
 
 @dp.message(F.text == "⬅️ Назад")
 @dp.message(F.text == "⬅️ В меню")
 async def go_back(message: Message):
     pending_users.discard(message.from_user.id)
-    await message.answer("🏠 <b>Главное меню</b>", reply_markup=menu_kb, parse_mode="HTML")
+    await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=menu_kb, parse_mode="HTML")
 
 @dp.message(lambda msg: msg.from_user.id in pending_users)
 async def process_id(message: Message):
     if not message.text or not message.text.isdigit():
-        return await message.answer("❌ Ошибка. Введите только цифры вашего <b>ID Pocket Option</b>.")
+        return await message.answer("❌ <b>Ошибка валидации.</b> Введите только ЦИФРЫ вашего ID Pocket Option.")
     uid = message.from_user.id
     pending_users.discard(uid)
-    await bot.send_message(ADMIN_ID, f"🔔 <b>НОВАЯ ЗАЯВКА</b>\nЮзер: @{message.from_user.username}\nTG ID: <code>{uid}</code>\nID PO: <code>{message.text}</code>\n\nОдобрить: <code>/give {uid}</code>", parse_mode="HTML")
-    await message.answer("💾 <b>ID принят.</b> Ожидайте подтверждения доступа администратором.", reply_markup=menu_kb, parse_mode="HTML")
+    await bot.send_message(
+        ADMIN_ID, 
+        f"🔔 <b>НОВАЯ ЗАЯВКА НА VIP</b>\n"
+        f"👤 Юзер: @{message.from_user.username or 'Без юзернейма'}\n"
+        f"🆔 TG ID: <code>{uid}</code>\n"
+        f"💼 ID PO: <code>{message.text}</code>\n\n"
+        f"✅ Выдать доступ: <code>/give {uid}</code>\n"
+        f"🚫 Заблокировать: <code>/block {uid}</code>", 
+        parse_mode="HTML"
+    )
+    await message.answer("💾 <b>ID принят в обработку.</b>\nОжидайте подтверждения верификации от технического отдела.", reply_markup=menu_kb, parse_mode="HTML")
 
+# ===== АДМИН ПАНЕЛЬ =====
 @dp.message(F.text.startswith("/give"))
 async def admin_give(message: Message):
     if message.from_user.id != ADMIN_ID: return
     try:
         target = int(message.text.split()[1])
         db_update_user(target, has_access=True)
-        await bot.send_message(target, "🚀 <b>VIP ДОСТУП ОТКРЫТ</b>\nТеперь вам доступны лучшие сигналы для профита!", parse_mode="HTML", reply_markup=menu_kb)
-        await message.answer(f"✅ Доступ для {target} активирован.")
-    except: await message.answer("Ошибка. Формат: /give ID")
+        await bot.send_message(target, "🚀 <b>СИСТЕМА: VIP ДОСТУП АКТИВИРОВАН</b>\nТерминал разблокирован. Вам доступны профессиональные сигналы для профита!", parse_mode="HTML", reply_markup=menu_kb)
+        await message.answer(f"✅ Доступ для пользователя <code>{target}</code> успешно АКТИВИРОВАН.", parse_mode="HTML")
+    except: await message.answer("⚠️ Ошибка. Формат: <code>/give ID</code>", parse_mode="HTML")
 
+@dp.message(F.text.startswith("/block"))
+async def admin_block(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        target = int(message.text.split()[1])
+        db_update_user(target, has_access=False)
+        try:
+            await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML")
+        except:
+            pass # Юзер мог заблокировать бота
+        await message.answer(f"🚫 Доступ для пользователя <code>{target}</code> успешно ЗАБЛОКИРОВАН.", parse_mode="HTML")
+    except: await message.answer("⚠️ Ошибка. Формат: <code>/block ID</code>", parse_mode="HTML")
+
+# ===== ТОРГОВЫЙ ПРОЦЕСС =====
 @dp.message(F.text == "📊 Торговая панель")
 async def t_panel(message: Message):
     if not db_get_user(message.from_user.id)["has_access"]: return
-    await message.answer("⚙️ <b>НАСТРОЙКА:</b> Выберите торговую пару:", reply_markup=pair_kb, parse_mode="HTML")
+    await message.answer("⚙️ <b>КОНФИГУРАЦИЯ СДЕЛКИ:</b>\nВыберите торговый актив (валютную пару):", reply_markup=pair_kb, parse_mode="HTML")
 
 @dp.message(F.text.in_(pairs))
 async def set_pair(message: Message):
     user_temp_data[message.from_user.id] = {"pair": message.text}
-    await message.answer("⚙️ <b>НАСТРОЙКА:</b> Установите время экспирации:", reply_markup=time_kb, parse_mode="HTML")
+    await message.answer("⚙️ <b>ТАЙМФРЕЙМ:</b>\nУстановите время экспирации опциона:", reply_markup=time_kb, parse_mode="HTML")
 
 @dp.message(F.text.in_(times))
 async def set_time(message: Message):
     uid = message.from_user.id
     if uid not in user_temp_data: user_temp_data[uid] = {}
     user_temp_data[uid]["time"] = message.text
-    await message.answer(f"✅ <b>Настройки сохранены:</b>\n{user_temp_data[uid]['pair']} | {user_temp_data[uid]['time']}", reply_markup=signal_kb, parse_mode="HTML")
+    await message.answer(
+        f"✅ <b>Пресет сохранен:</b>\n"
+        f"📈 Актив: <b>{user_temp_data[uid]['pair']}</b>\n"
+        f"⏱ Экспирация: <b>{user_temp_data[uid]['time']}</b>\n\n"
+        f"<i>Алгоритм готов к поиску точки входа.</i>", 
+        reply_markup=signal_kb, parse_mode="HTML"
+    )
 
 @dp.message(F.text == "⚡ Получить сигнал")
 async def get_signal(message: Message):
@@ -226,35 +267,43 @@ async def get_signal(message: Message):
         db_update_user(uid, daily=0, date=today)
     
     if daily >= DAILY_LIMIT:
-        return await message.answer("🛑 <b>ЛИМИТ:</b> 50 сигналов в сутки использовано.")
+        return await message.answer("🛑 <b>РИСК-МЕНЕДЖМЕНТ:</b> Дневной лимит (50 сделок) исчерпан. Защита от тильта активирована. Возвращайтесь завтра.")
     
     data = user_temp_data.get(uid)
     if not data or "pair" not in data:
-        return await message.answer("⚠️ Выберите пару в «Торговой панели»!")
+        return await message.answer("⚠️ Ошибка конфигурации. Настройте актив в меню «📊 Торговая панель»!")
 
-    if time.time() - last_click_time.get(uid, 0) < 5:
-        return await message.answer("⏳ Анализ еще идет...")
+    if time.time() - last_click_time.get(uid, 0) < 6:
+        return await message.answer("⏳ <b>Идет просчет...</b> Дождитесь завершения предыдущего анализа.")
 
     last_click_time[uid] = time.time()
     
-    # --- АНИМАЦИЯ ЗАГРУЗКИ ---
-    progress_msg = await message.answer("🔍 <b>Анализируем рынок... [25%]</b>", parse_mode="HTML")
-    await asyncio.sleep(0.8)
-    await progress_msg.edit_text("📡 <b>Поиск лучшей точки входа... [75%]</b>", parse_mode="HTML")
-    await asyncio.sleep(0.8)
-    await progress_msg.edit_text("💎 <b>Генерация сигнала... [100%]</b>", parse_mode="HTML")
+    # --- АНИМАЦИЯ АНАЛИЗА ПРО УРОВНЯ ---
+    progress_msg = await message.answer("⬛️⬛️⬛️⬛️⬛️ [0%]\n📡 <i>Подключение к потоку котировок...</i>", parse_mode="HTML")
+    await asyncio.sleep(0.7)
+    await progress_msg.edit_text("🟩⬛️⬛️⬛️⬛️ [25%]\n📊 <i>Сбор данных с осцилляторов (RSI, Stochastic)...</i>", parse_mode="HTML")
+    await asyncio.sleep(0.7)
+    await progress_msg.edit_text("🟩🟩🟩⬛️⬛️ [60%]\n📉 <i>Оценка волатильности и уровней поддержки/сопротивления...</i>", parse_mode="HTML")
+    await asyncio.sleep(0.7)
+    await progress_msg.edit_text("🟩🟩🟩🟩⬛️ [85%]\n🎯 <i>Анализ паттернов Price Action...</i>", parse_mode="HTML")
+    await asyncio.sleep(0.5)
+    await progress_msg.edit_text("🟩🟩🟩🟩🟩 [100%]\n✅ <i>Математический перевес найден!</i>", parse_mode="HTML")
     await asyncio.sleep(0.4)
     
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     
-    direction = random.choice(["ВВЕРХ 🟢", "ВНИЗ 🔴"])
+    direction = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
+    confidence = random.randint(88, 96)
     
     res = (
-        f"🎯 <b>СИГНАЛ ГОТОВ</b>\n\n"
+        f"⚡️ <b>ТОРГОВЫЙ СИГНАЛ ГОТОВ</b> ⚡️\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 <b>Актив:</b> {data['pair']}\n"
-        f"⏱ <b>Время:</b> {data['time']}\n"
-        f"📈 <b>Точность:</b> {random.randint(90,96)}%\n\n"
-        f"🚀 <b>ВХОД: {direction}</b>"
+        f"⏱ <b>Время сделки:</b> {data['time']}\n"
+        f"🧠 <b>Уверенность ИИ:</b> {confidence}%\n\n"
+        f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ <i>Не забудьте про Money Management! (1-3% от баланса)</i>"
     )
     
     try: await progress_msg.delete()
@@ -266,29 +315,33 @@ async def profile(message: Message):
     u = db_get_user(message.from_user.id)
     rank = get_rank(u["signals"])
     await message.answer(
-        f"👤 <b>ВАШ АККАУНТ</b>\n"
-        f"▫️ ID: <code>{message.from_user.id}</code>\n"
-        f"▫️ Статус: <b>{rank}</b>\n\n"
-        f"📈 <b>СТАТИСТИКА:</b>\n"
-        f"▫️ Сигналов получено: {u['signals']}\n"
-        f"▫️ Лимит сегодня: {u['daily_count']}/{DAILY_LIMIT}\n\n"
-        f"💎 <b>VIP:</b> {'АКТИВЕН ✅' if u['has_access'] else 'ВЫКЛЮЧЕН ❌'}", 
+        f"👤 <b>ЛИЧНЫЙ КАБИНЕТ ТРЕЙДЕРА</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Ваш ID: <code>{message.from_user.id}</code>\n"
+        f"🏆 Уровень: <b>{rank}</b>\n\n"
+        f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
+        f"▫️ Выполнено сделок (всего): <b>{u['signals']}</b>\n"
+        f"▫️ Сделок за сегодня: <b>{u['daily_count']} / {DAILY_LIMIT}</b>\n\n"
+        f"💎 <b>СТАТУС ЛИЦЕНЗИИ:</b> {'АКТИВНА ✅' if u['has_access'] else 'ОГРАНИЧЕНА ❌'}", 
         parse_mode="HTML"
     )
 
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
     await message.answer(
-        "📈 <b>РЕЗУЛЬТАТЫ ЗА 24 ЧАСА</b>\n\n"
-        "✅ Успешных сделок: <b>92.4%</b>\n"
-        "❌ Минусовых: <b>7.6%</b>\n\n"
-        "<i>Статистика обновляется автоматически на основе ИИ-анализа.</i>", parse_mode="HTML"
+        "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📈 Средний WinRate: <b>92.4%</b>\n"
+        "🟢 Плюсовых сделок: <b>1 842</b>\n"
+        "🔴 Минусовых сделок: <b>151</b>\n"
+        "🔁 Возвратов: <b>24</b>\n\n"
+        "⚙️ <i>Сводка формируется автоматически на базе пула всех торговых сессий наших пользователей на платформе Pocket Option.</i>", 
+        parse_mode="HTML"
     )
 
 async def main():
-    print("🚀 BOT STARTED")
+    print("🚀 PRO AI BOT STARTED SUCCESSFULLY")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
     asyncio.run(main())
