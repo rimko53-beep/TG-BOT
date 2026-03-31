@@ -108,7 +108,7 @@ def get_rank(count):
     if count <= 350: return "📈 Про-Трейдер"
     return "👑 Маркет-Мейкер"
 
-# ===== MIDDLEWARE (ПРОВЕРКА ДОСТУПА) =====
+# ===== MIDDLEWARE =====
 class AccessMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         if isinstance(event, Message):
@@ -247,15 +247,15 @@ async def get_signal(message: Message):
     
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     
-    direction = random.choice(["📈 CALL (ВВЕРХ)", "📉 PUT (ВНИЗ)"])
-    emoji = "🟢" if "ВВЕРХ" in direction else "🔴"
+    # Изменено: Убрано CALL/PUT, оставлено только направление и эмодзи
+    direction = random.choice(["ВВЕРХ 🟢", "ВНИЗ 🔴"])
     
     res = (
         f"📟 <b>СИГНАЛ СФОРМИРОВАН</b>\n\n"
         f"📊 <b>Актив:</b> {data['pair']}\n"
         f"⏱ <b>Время:</b> {data['time']}\n"
         f"🎯 <b>Вероятность:</b> {random.randint(89,97)}%\n\n"
-        f"🚀 <b>РЕШЕНИЕ: {direction} {emoji}</b>"
+        f"🚀 <b>РЕШЕНИЕ: {direction}</b>"
     )
     
     try: await progress_msg.delete()
