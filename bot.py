@@ -100,7 +100,7 @@ times = ["⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек", "⏱ 1 мин", "⏱ 
 user_temp_data = {} 
 pending_users = set()
 last_click_time = {}
-DAILY_LIMIT = 50
+DAILY_LIMIT = 30  # Изменено с 50 на 30
 
 def get_rank(count):
     if count <= 50: return "🌱 Новичок (Retail)"
@@ -142,10 +142,8 @@ signal_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⚡ Получи
 
 @dp.message(CommandStart())
 async def start(message: Message):
-    # Обновляем БД синхронно (для старта это нормально)
     db_update_user(message.from_user.id)
     
-    # Отправляем приветствие моментально, без зависаний
     start_text = (
         "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -263,7 +261,7 @@ async def get_signal(message: Message):
         db_update_user(uid, daily=0, date=today)
     
     if daily >= DAILY_LIMIT:
-        return await message.answer("🛑 <b>РИСК-МЕНЕДЖМЕНТ:</b> Дневной лимит (50 сделок) исчерпан. Защита от тильта активирована. Возвращайтесь завтра.")
+        return await message.answer(f"🛑 <b>РИСК-МЕНЕДЖМЕНТ:</b> Дневной лимит ({DAILY_LIMIT} сделок) исчерпан. Защита от тильта активирована. Возвращайтесь завтра.")
     
     data = user_temp_data.get(uid)
     if not data or "pair" not in data:
