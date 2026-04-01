@@ -1053,8 +1053,10 @@ async def t_panel(message: Message):
         "📊 <b>ТОРГОВАЯ ПАНЕЛЬ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         "Выберите <b>валютную пару</b> для анализа:\n\n"
-        "🔹 Мажорные пары: EUR/USD, USD/JPY, GBP/JPY\n"
-        "🔹 Кросс-пары: AUD/CAD, CAD/CHF, EUR/CHF, GBP/CAD, USD/CAD",
+        "🔹 Мажорные пары: 
+        EUR/USD, USD/JPY, GBP/JPY\n"
+        "🔹 Кросс-пары: 
+        AUD/CAD, CAD/CHF, EUR/CHF, GBP/CAD, USD/CAD",
         reply_markup=pair_kb,
         parse_mode="HTML"
     )
