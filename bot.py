@@ -21,6 +21,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 DATABASE_URL = os.getenv("DATABASE_URL")
 CRYPTO_BOT_TOKEN = os.getenv("CRYPTO_BOT_TOKEN")
+TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY", "f9cef39095c648039ca3f0929ee2a2eb")
 
 if not TOKEN or not ADMIN_ID or not CRYPTO_BOT_TOKEN:
     raise ValueError("Проверьте BOT_TOKEN, ADMIN_ID и CRYPTO_BOT_TOKEN в переменных Railway!")
@@ -40,17 +41,17 @@ SUBSCRIPTION_PLANS = {
 }
 
 # ═══════════════════════════════════════════════
-#         МАППИНГ ПАР → YAHOO FINANCE
+#         МАППИНГ ПАР → TWELVE DATA
 # ═══════════════════════════════════════════════
-PAIR_TO_TICKER = {
-    "💵 AUD/CAD": "AUDCAD=X",
-    "💵 CAD/CHF": "CADCHF=X",
-    "💵 EUR/CHF": "EURCHF=X",
-    "💵 GBP/CAD": "GBPCAD=X",
-    "💵 USD/CAD": "USDCAD=X",
-    "💵 GBP/JPY": "GBPJPY=X",
-    "💵 EUR/USD": "EURUSD=X",
-    "💵 USD/JPY": "USDJPY=X",
+PAIR_TO_SYMBOL = {
+    "💵 AUD/CAD": "AUD/CAD",
+    "💵 CAD/CHF": "CAD/CHF",
+    "💵 EUR/CHF": "EUR/CHF",
+    "💵 GBP/CAD": "GBP/CAD",
+    "💵 USD/CAD": "USD/CAD",
+    "💵 GBP/JPY": "GBP/JPY",
+    "💵 EUR/USD": "EUR/USD",
+    "💵 USD/JPY": "USD/JPY",
 }
 
 # ═══════════════════════════════════════════════
@@ -250,68 +251,66 @@ async def check_invoice(invoice_id):
     return False
 
 # ═══════════════════════════════════════════════
-#         ПОЛУЧЕНИЕ КОТИРОВОК (YAHOO FINANCE)
+#         ПОЛУЧЕНИЕ КОТИРОВОК (TWELVE DATA)
 # ═══════════════════════════════════════════════
 async def get_real_quote(pair_label: str) -> dict | None:
-    ticker = PAIR_TO_TICKER.get(pair_label)
-    if not ticker:
+    symbol = PAIR_TO_SYMBOL.get(pair_label)
+    if not symbol:
         return None
 
-    url     = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=5m"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    # Запрашиваем последние 10 свечей по 1 минуте
+    url = (
+        f"https://api.twelvedata.com/time_series"
+        f"?symbol={symbol}"
+        f"&interval=1min"
+        f"&outputsize=10"
+        f"&apikey={TWELVEDATA_API_KEY}"
+    )
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
+                    print(f"TwelveData HTTP {resp.status} для {symbol}")
                     return None
                 data = await resp.json()
 
-        result = data.get("chart", {}).get("result", [])
-        if not result:
+        # Проверяем статус ответа
+        if data.get("status") == "error" or "values" not in data:
+            print(f"TwelveData ошибка для {symbol}: {data.get('message', 'нет данных')}")
             return None
 
-        meta       = result[0].get("meta", {})
-        indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
-
-        current_price = meta.get("regularMarketPrice")
-        prev_close    = meta.get("chartPreviousClose") or meta.get("previousClose")
-
-        opens  = indicators.get("open",  [])
-        closes = indicators.get("close", [])
-        highs  = indicators.get("high",  [])
-        lows   = indicators.get("low",   [])
-
-        opens_clean  = [x for x in opens  if x is not None]
-        closes_clean = [x for x in closes if x is not None]
-        highs_clean  = [x for x in highs  if x is not None]
-        lows_clean   = [x for x in lows   if x is not None]
-
-        if not current_price:
+        values = data["values"]  # список свечей, первая — самая свежая
+        if not values:
             return None
 
-        change     = 0.0
-        change_pct = 0.0
-        if prev_close and prev_close != 0:
-            change     = current_price - prev_close
-            change_pct = (change / prev_close) * 100
+        # Парсим свечи (TwelveData возвращает строки)
+        opens  = [float(v["open"])  for v in reversed(values)]
+        closes = [float(v["close"]) for v in reversed(values)]
+        highs  = [float(v["high"])  for v in reversed(values)]
+        lows   = [float(v["low"])   for v in reversed(values)]
 
-        candle_direction = None
-        if opens_clean and closes_clean:
-            last_open  = opens_clean[-1]
-            last_close = closes_clean[-1]
-            if   last_close > last_open: candle_direction = "bullish"
-            elif last_close < last_open: candle_direction = "bearish"
-            else:                        candle_direction = "neutral"
+        current_price = closes[-1]
+        prev_close    = closes[-2] if len(closes) >= 2 else closes[-1]
 
-        # Мини-RSI
+        change     = current_price - prev_close
+        change_pct = (change / prev_close) * 100 if prev_close != 0 else 0.0
+
+        # Направление последней свечи
+        last_open  = opens[-1]
+        last_close = closes[-1]
+        if   last_close > last_open: candle_direction = "bullish"
+        elif last_close < last_open: candle_direction = "bearish"
+        else:                        candle_direction = "neutral"
+
+        # Мини-RSI по закрытиям
         rsi_value  = 50.0
         rsi_signal = "нейтральный"
-        if len(closes_clean) >= 3:
+        if len(closes) >= 3:
             gains  = []
             losses = []
-            for i in range(1, len(closes_clean)):
-                delta = closes_clean[i] - closes_clean[i - 1]
+            for i in range(1, len(closes)):
+                delta = closes[i] - closes[i - 1]
                 if delta > 0: gains.append(delta)
                 else:         losses.append(abs(delta))
             avg_gain  = sum(gains)  / len(gains)  if gains  else 0
@@ -324,15 +323,15 @@ async def get_real_quote(pair_label: str) -> dict | None:
 
         # Волатильность
         volatility = "низкая"
-        if highs_clean and lows_clean:
-            avg_range = sum(h - l for h, l in zip(highs_clean, lows_clean)) / len(highs_clean)
+        if highs and lows:
+            avg_range = sum(h - l for h, l in zip(highs, lows)) / len(highs)
             if   avg_range > current_price * 0.0005: volatility = "высокая 🔥"
             elif avg_range > current_price * 0.0002: volatility = "средняя"
 
         # Тренд
         trend = "боковик"
-        if len(closes_clean) >= 2:
-            diff = closes_clean[-1] - closes_clean[0]
+        if len(closes) >= 2:
+            diff = closes[-1] - closes[0]
             if   diff > 0: trend = "восходящий 📈"
             elif diff < 0: trend = "нисходящий 📉"
 
@@ -346,13 +345,13 @@ async def get_real_quote(pair_label: str) -> dict | None:
             "rsi_value":        rsi_value,
             "volatility":       volatility,
             "trend":            trend,
-            "high":             max(highs_clean)  if highs_clean  else current_price,
-            "low":              min(lows_clean)   if lows_clean   else current_price,
-            "candles_count":    len(closes_clean),
+            "high":             max(highs),
+            "low":              min(lows),
+            "candles_count":    len(closes),
         }
 
     except Exception as e:
-        print(f"Ошибка получения котировки {ticker}: {e}")
+        print(f"Ошибка получения котировки TwelveData {symbol}: {e}")
         return None
 
 
@@ -746,7 +745,7 @@ async def about_bot(message: Message):
     text = (
         "🤖 <b>AI TRADING TERMINAL — FX PRO v2.0</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
-        "📡 <b>Источник данных:</b> Yahoo Finance (live)\n"
+        "📡 <b>Источник данных:</b> Twelve Data (live)\n"
         "🧠 <b>Алгоритм:</b> RSI + свечной анализ + тренд\n"
         "📊 <b>Платформа:</b> Pocket Option\n"
         "💱 <b>Пары:</b> 8 валютных инструментов\n"
