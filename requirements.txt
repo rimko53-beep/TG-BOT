@@ -2,3 +2,4 @@ aiogram
 aiofiles
 psycopg2-binary
 SQLAlchemy
+aiohttp
