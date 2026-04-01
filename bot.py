@@ -31,11 +31,12 @@ dp = Dispatcher()
 
 # ═══════════════════════════════════════════════
 #              ПЛАНЫ ПОДПИСОК
+# Лимиты: FREE=5, JUNIOR=15, PRO=30
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
-    "free":   {"limit": 20,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
-    "junior": {"limit": 50,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
-    "pro":    {"limit": 100, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
+    "free":   {"limit": 5,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
+    "junior": {"limit": 15, "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
+    "pro":    {"limit": 30, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
 }
 
 # ═══════════════════════════════════════════════
@@ -51,6 +52,38 @@ PAIR_TO_TICKER = {
     "💵 EUR/USD": "EURUSD=X",
     "💵 USD/JPY": "USDJPY=X",
 }
+
+# ═══════════════════════════════════════════════
+#         ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ РЫНКА
+#  ПН–ПТ: работает круглосуточно
+#  СБ–ВС: закрыт
+# ═══════════════════════════════════════════════
+def is_market_open() -> bool:
+    """Возвращает True если сегодня будний день (ПН–ПТ)."""
+    now = datetime.utcnow() + timedelta(hours=3)  # МСК
+    return now.weekday() < 5  # 0=ПН, 4=ПТ, 5=СБ, 6=ВС
+
+def get_market_closed_text() -> str:
+    now = datetime.utcnow() + timedelta(hours=3)
+    days_until_monday = (7 - now.weekday()) % 7 or 7
+    monday = now + timedelta(days=days_until_monday)
+    monday_str = monday.strftime("%d.%m.%Y")
+    return (
+        "🔴 <b>РЫНОК ЗАКРЫТ — ВЫХОДНОЙ ДЕНЬ</b>\n"
+        "━━━━━━━━━━━━━━━━━\n\n"
+        "📅 Сегодня <b>суббота/воскресенье</b> — Forex не работает.\n\n"
+        "🌐 Валютные пары в эти дни не торгуются:\n"
+        "  ▸ Спреды неадекватны\n"
+        "  ▸ Ликвидность отсутствует\n"
+        "  ▸ Сигналы недостоверны\n\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "⏰ <b>График работы терминала:</b>\n"
+        "  🟢 ПН–ПТ: круглосуточно (24/7)\n"
+        "  🔴 СБ–ВС: рынок закрыт\n\n"
+        f"📆 Следующее открытие: <b>Понедельник, {monday_str} 00:00 МСК</b>\n\n"
+        "💤 <i>Отдыхайте, анализируйте, готовьтесь к новой неделе!\n"
+        "Возвращайтесь в понедельник с новыми силами и свежим взглядом. 💪</i>"
+    )
 
 # ═══════════════════════════════════════════════
 #              РАБОТА С PostgreSQL
@@ -392,6 +425,12 @@ def confidence_bar(pct: int) -> str:
     filled = max(0, min(10, filled))
     return "▓" * filled + "░" * (10 - filled)
 
+def days_bar(used: int, total: int) -> str:
+    """Прогресс-бар для дней подписки."""
+    pct = used / total if total > 0 else 0
+    filled = int(pct * 10)
+    return "█" * filled + "░" * (10 - filled)
+
 
 # ═══════════════════════════════════════════════
 #              ВРЕМЕННЫЕ ДАННЫЕ
@@ -480,11 +519,27 @@ back_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-def get_sub_kb():
+def get_sub_kb(current_plan: str = "free"):
+    """Кнопки подписки с учётом текущего тарифа (показываем продление)."""
+    buttons = []
+    if current_plan == "free":
+        buttons.append([InlineKeyboardButton(text="🔵 JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
+        buttons.append([InlineKeyboardButton(text="🟣 PRO — 100$ / 7 дней",   callback_data="buy_pro")])
+    elif current_plan == "junior":
+        buttons.append([InlineKeyboardButton(text="🔄 Продлить JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
+        buttons.append([InlineKeyboardButton(text="⬆️ Улучшить до PRO — 100$ / 7 дней", callback_data="buy_pro")])
+    elif current_plan == "pro":
+        buttons.append([InlineKeyboardButton(text="🔄 Продлить PRO — 100$ / 7 дней", callback_data="buy_pro")])
+        buttons.append([InlineKeyboardButton(text="🔵 Сменить на JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
+    buttons.append([InlineKeyboardButton(text="📊 Сравнить тарифы", callback_data="compare_plans")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_upgrade_kb():
+    """Кнопка перехода в подписку из блока лимита."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 JUNIOR — 50$ / 7 дней", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 PRO — 100$ / 7 дней",   callback_data="buy_pro")],
-        [InlineKeyboardButton(text="📊 Сравнить тарифы",        callback_data="compare_plans")],
+        [InlineKeyboardButton(text="🔵 JUNIOR — 15 сигналов/день | 50$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 PRO — 30 сигналов/день | 100$",   callback_data="buy_pro")],
+        [InlineKeyboardButton(text="📊 Сравнить тарифы",                  callback_data="compare_plans")],
     ])
 
 def get_confirm_sub_kb(invoice_url, invoice_id, plan_key):
@@ -505,68 +560,100 @@ async def sub_menu(message: Message):
     emoji = plan['emoji']
 
     exp_str = "∞ Бессрочно"
+    days_left_str = ""
     if u['sub_expires']:
         exp_str = u['sub_expires'].strftime("%d.%m.%Y %H:%M")
+        days_left = (u['sub_expires'] - datetime.now()).days
+        days_used = 7 - days_left
+        bar = days_bar(days_used, 7)
+        days_left_str = f"\n  Осталось:    <code>[{bar}]</code> <b>{max(days_left, 0)} дн.</b>"
+
+    # Блок «продление» для платных тарифов
+    renew_block = ""
+    if u['sub_type'] != 'free':
+        renew_block = (
+            "\n━━━━━━━━━━━━━━━━━\n"
+            "🔄 <b>ПРОДЛЕНИЕ / СМЕНА ТАРИФА:</b>\n"
+            "<i>Продлите подписку заранее — активация мгновенная.\n"
+            "Срок добавится к текущему остатку.</i>\n"
+        )
 
     text = (
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         f"  Ваш тариф:   {emoji} <b>{u['sub_type'].upper()}</b>\n"
         f"  Лимит:       <b>{limit} сигналов / день</b>\n"
-        f"  Истекает:    <b>{exp_str}</b>\n\n"
-        "━━━━━━━━━━━━━━━━━\n"
+        f"  Истекает:    <b>{exp_str}</b>"
+        f"{days_left_str}\n"
+        f"{renew_block}"
+        "\n━━━━━━━━━━━━━━━━━\n"
         "📦 <b>Доступные тарифы:</b>\n\n"
-        "⬜ <b>FREE</b>    — 20 сигналов / день   <i>(бесплатно)</i>\n"
-        "🔵 <b>JUNIOR</b>  — 50 сигналов / день   <i>50$ / 7 дней</i>\n"
-        "🟣 <b>PRO</b>     — 100 сигналов / день  <i>100$ / 7 дней</i>\n\n"
+        "⬜ <b>FREE</b>    — 5 сигналов / день     <i>(бесплатно)</i>\n"
+        "🔵 <b>JUNIOR</b>  — 15 сигналов / день    <i>50$ / 7 дней</i>\n"
+        "🟣 <b>PRO</b>     — 30 сигналов / день    <i>100$ / 7 дней</i>\n\n"
         "<i>Оплата принимается в <b>USDT</b> через CryptoBot — мгновенно и безопасно.</i>"
     )
-    await message.answer(text, reply_markup=get_sub_kb(), parse_mode="HTML")
+    await message.answer(text, reply_markup=get_sub_kb(u['sub_type']), parse_mode="HTML")
 
 @dp.callback_query(F.data == "compare_plans")
 async def compare_plans(callback: CallbackQuery):
     text = (
         "📊 <b>СРАВНЕНИЕ ТАРИФНЫХ ПЛАНОВ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
-        "<b>Функция                  FREE   JUNIOR    PRO</b>\n"
-        "Сигналов в день            20      50       100\n"
-        "Реальные котировки         ✅      ✅        ✅\n"
-        "RSI-анализ                 ✅      ✅        ✅\n"
-        "Анализ тренда              ✅      ✅        ✅\n"
-        "Приоритет поддержки        ❌      ✅        ✅\n"
-        "VIP-уведомления            ❌      ❌        ✅\n"
-        "Цена                       0$     50$      100$\n"
-        "Срок                       ∞      7 дн     7 дн\n\n"
+        "<b>Функция               FREE   JUNIOR   PRO</b>\n"
+        "Сигналов в день         5       15       30\n"
+        "Реальные котировки      ✅      ✅       ✅\n"
+        "RSI-анализ              ✅      ✅       ✅\n"
+        "Анализ тренда           ✅      ✅       ✅\n"
+        "Приоритет поддержки     ❌      ✅       ✅\n"
+        "VIP-уведомления         ❌      ❌       ✅\n"
+        "Эксклюзив. стратегии    ❌      ❌       ✅\n"
+        "Продление подписки      ❌      ✅       ✅\n"
+        "Цена                    0$     50$     100$\n"
+        "Срок                    ∞      7 дн    7 дн\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "<i>Выберите тариф и торгуйте с максимальным перевесом!</i>"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 Купить JUNIOR", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 Купить PRO",    callback_data="buy_pro")],
+        [InlineKeyboardButton(text="🔵 Купить JUNIOR — 50$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 Купить PRO — 100$",   callback_data="buy_pro")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 @dp.callback_query(F.data == "back_to_plans")
 async def back_to_plans(callback: CallbackQuery):
-    await callback.message.edit_reply_markup(reply_markup=get_sub_kb())
+    u = db_get_user(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=get_sub_kb(u['sub_type']))
 
 @dp.callback_query(F.data.startswith("buy_"))
 async def process_buy(callback: CallbackQuery):
     plan_key = callback.data.split("_")[1]
     plan     = SUBSCRIPTION_PLANS[plan_key]
+    u        = db_get_user(callback.from_user.id)
     res      = await create_invoice(plan['price'], plan['name'])
+
+    # Определяем текст кнопки (продление или покупка)
+    is_renew = u['sub_type'] == plan_key
+    action_word = "ПРОДЛЕНИЕ" if is_renew else "ПОКУПКА"
 
     if res['ok']:
         invoice_url = res['result']['pay_url']
         invoice_id  = res['result']['invoice_id']
         kb = get_confirm_sub_kb(invoice_url, invoice_id, plan_key)
+
+        renew_note = ""
+        if is_renew and u['sub_expires']:
+            new_exp = u['sub_expires'] + timedelta(days=7)
+            renew_note = f"\n  📅 Новая дата истечения: <b>{new_exp.strftime('%d.%m.%Y')}</b>\n"
+
         await callback.message.edit_text(
-            f"🧾 <b>СЧЁТ НА ОПЛАТУ</b>\n"
+            f"🧾 <b>СЧЁТ НА {action_word}</b>\n"
             f"━━━━━━━━━━━━━━━━━\n\n"
             f"  Тариф:     {plan['emoji']} <b>{plan['name']}</b>\n"
             f"  Сумма:     <b>{plan['price']} USDT</b>\n"
             f"  Срок:      <b>7 дней</b>\n"
-            f"  Лимит:     <b>{plan['limit']} сигналов / день</b>\n\n"
+            f"  Лимит:     <b>{plan['limit']} сигналов / день</b>\n"
+            f"{renew_note}"
             f"━━━━━━━━━━━━━━━━━\n"
             f"1️⃣ Нажмите <b>«💳 Оплатить»</b> — вы попадёте в CryptoBot\n"
             f"2️⃣ Совершите оплату в USDT\n"
@@ -586,7 +673,13 @@ async def process_check(callback: CallbackQuery):
     is_paid  = await check_invoice(inv_id)
 
     if is_paid:
-        expiry = datetime.now() + timedelta(days=7)
+        u = db_get_user(callback.from_user.id)
+        # Продление: если та же подписка и ещё не истекла — добавляем 7 дней
+        if u['sub_type'] == plan_key and u['sub_expires'] and u['sub_expires'] > datetime.now():
+            expiry = u['sub_expires'] + timedelta(days=7)
+        else:
+            expiry = datetime.now() + timedelta(days=7)
+
         db_update_user(callback.from_user.id, sub_type=plan_key, sub_expires=expiry)
         plan = SUBSCRIPTION_PLANS[plan_key]
         await callback.message.edit_text(
@@ -606,7 +699,8 @@ async def process_check(callback: CallbackQuery):
                 f"💰 <b>НОВАЯ ОПЛАТА ПОДПИСКИ</b>\n"
                 f"👤 ID: <code>{callback.from_user.id}</code>\n"
                 f"📦 Тариф: <b>{plan_key.upper()}</b>\n"
-                f"💵 Сумма: <b>{plan['price']} USDT</b>",
+                f"💵 Сумма: <b>{plan['price']} USDT</b>\n"
+                f"📅 Истекает: <b>{expiry.strftime('%d.%m.%Y %H:%M')}</b>",
                 parse_mode="HTML"
             )
         except:
@@ -623,6 +717,8 @@ async def start(message: Message):
     u           = db_get_user(message.from_user.id)
     total_users = db_get_total_users()
 
+    market_status = "🟢 ОНЛАЙН (ПН–ПТ)" if is_market_open() else "🔴 ВЫХОДНОЙ (СБ–ВС)"
+
     start_text = (
         "┌─────────────────────────┐\n"
         "│  🖥  AI TRADING TERMINAL  │\n"
@@ -636,13 +732,17 @@ async def start(message: Message):
         "▸ Сигнал с процентом уверенности ИИ\n\n"
         f"👥 Уже торгуют с нами: <b>{total_users + 118:,}</b> трейдеров\n"
         f"📡 WinRate системы: <b>88–94%</b>\n\n"
-        "🟢 <b>СТАТУС СИСТЕМЫ: ОНЛАЙН</b>\n"
+        f"⏰ <b>СТАТУС РЫНКА: {market_status}</b>\n"
+        f"📅 График: ПН–ПТ 24/7 | СБ–ВС закрыт\n"
         f"🕐 {(datetime.utcnow() + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')} (МСК)"
     )
     await message.answer(start_text, reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 @dp.message(F.text == "🚀 О боте")
 async def about_bot(message: Message):
+    now = datetime.utcnow() + timedelta(hours=3)
+    market_status = "🟢 ОНЛАЙН" if is_market_open() else "🔴 ВЫХОДНОЙ"
+
     text = (
         "🤖 <b>AI TRADING TERMINAL — FX PRO v2.0</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
@@ -651,6 +751,16 @@ async def about_bot(message: Message):
         "📊 <b>Платформа:</b> Pocket Option\n"
         "💱 <b>Пары:</b> 8 валютных инструментов\n"
         "⏱ <b>Таймфреймы:</b> 1, 3, 5, 10 минут\n\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "⏰ <b>РЕЖИМ РАБОТЫ:</b>\n"
+        "  🟢 ПН–ПТ: 24/7 (круглосуточно)\n"
+        "  🔴 СБ–ВС: рынок закрыт, сигналы недоступны\n\n"
+        f"  Сейчас: <b>{market_status}</b>\n\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "📦 <b>Тарифы:</b>\n"
+        "  ⬜ FREE    — 5 сигналов / день\n"
+        "  🔵 JUNIOR  — 15 сигналов / день  | 50$ / 7 дн\n"
+        "  🟣 PRO     — 30 сигналов / день  | 100$ / 7 дн\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "⚠️ <b>Дисклеймер:</b>\n"
         "<i>Торговля бинарными опционами сопряжена с рисками. "
@@ -703,7 +813,8 @@ async def help_cmd(message: Message):
         "💬 <b>Частые вопросы:</b>\n"
         "▸ <i>Как активировать доступ?</i> → кнопка «🔐 Активировать доступ»\n"
         "▸ <i>Как найти ID Pocket Option?</i> → Личный кабинет → Профиль\n"
-        "▸ <i>Когда обновляется лимит?</i> → Каждый день в 00:00 (МСК)\n\n"
+        "▸ <i>Когда обновляется лимит?</i> → Каждый день в 00:00 (МСК)\n"
+        "▸ <i>Когда работает терминал?</i> → ПН–ПТ 24/7, СБ–ВС закрыт\n\n"
         "✍️ <b>Напишите ваш вопрос прямо сейчас:</b>",
         reply_markup=back_kb,
         parse_mode="HTML"
@@ -933,6 +1044,11 @@ async def admin_broadcast(message: Message):
 async def t_panel(message: Message):
     if not db_get_user(message.from_user.id)["has_access"]:
         return
+
+    # Проверка выходного дня
+    if not is_market_open():
+        return await message.answer(get_market_closed_text(), parse_mode="HTML")
+
     await message.answer(
         "📊 <b>ТОРГОВАЯ ПАНЕЛЬ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
@@ -945,6 +1061,9 @@ async def t_panel(message: Message):
 
 @dp.message(F.text.in_(pairs))
 async def set_pair(message: Message):
+    if not is_market_open():
+        return await message.answer(get_market_closed_text(), parse_mode="HTML")
+
     user_temp_data[message.from_user.id] = {"pair": message.text}
     await message.answer(
         f"✅ <b>Актив выбран:</b> {message.text}\n\n"
@@ -955,6 +1074,9 @@ async def set_pair(message: Message):
 
 @dp.message(F.text.in_(times))
 async def set_time(message: Message):
+    if not is_market_open():
+        return await message.answer(get_market_closed_text(), parse_mode="HTML")
+
     uid = message.from_user.id
     if uid not in user_temp_data:
         user_temp_data[uid] = {}
@@ -982,6 +1104,10 @@ async def get_signal(message: Message):
     if not u["has_access"]:
         return
 
+    # ── Проверка выходного дня ──────────────────────────
+    if not is_market_open():
+        return await message.answer(get_market_closed_text(), parse_mode="HTML")
+
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
 
@@ -992,28 +1118,37 @@ async def get_signal(message: Message):
     sub_type      = u['sub_type']
     current_limit = SUBSCRIPTION_PLANS[sub_type]['limit']
 
+    # ── Лимит исчерпан ──────────────────────────────────
     if daily >= current_limit:
         if sub_type == "free":
-            risk_text = (
-                "🛑 <b>ЛИМИТ ИСЧЕРПАН</b>\n"
+            return await message.answer(
+                "🛑 <b>ДНЕВНОЙ ЛИМИТ ИСЧЕРПАН</b>\n"
                 "━━━━━━━━━━━━━━━━━\n\n"
-                f"Вы использовали все <b>{current_limit} бесплатных сигналов</b> за сегодня.\n\n"
-                "🔼 <b>Хотите больше сигналов?</b>\n"
-                "▸ 🔵 JUNIOR: до <b>50 сигналов/день</b> — 50$ / 7 дней\n"
-                "▸ 🟣 PRO: до <b>100 сигналов/день</b> — 100$ / 7 дней\n\n"
-                "⏳ <i>Или дождитесь обновления лимита в 00:00 (МСК).</i>"
+                f"Вы использовали все <b>{current_limit} бесплатных сигнала</b> на сегодня.\n\n"
+                "💡 <b>Хотите торговать без ограничений?</b>\n"
+                "Перейдите в раздел <b>«💎 Подписка»</b> и получите\n"
+                "больше сигналов по супер цене:\n\n"
+                "🔵 <b>JUNIOR</b> — <b>15 сигналов/день</b> всего за <b>50$</b> / 7 дней\n"
+                "🟣 <b>PRO</b>    — <b>30 сигналов/день</b> всего за <b>100$</b> / 7 дней\n\n"
+                "⏳ <i>Или дождитесь обновления лимита в 00:00 (МСК).</i>",
+                reply_markup=get_upgrade_kb(),
+                parse_mode="HTML"
             )
         else:
-            risk_text = (
+            return await message.answer(
                 "🛑 <b>ДНЕВНОЙ ЛИМИТ ИСЧЕРПАН</b>\n"
                 "━━━━━━━━━━━━━━━━━\n\n"
                 f"Тариф <b>{sub_type.upper()}</b>: использовано <b>{daily} / {current_limit}</b> сигналов.\n\n"
-                "🔐 <b>Защита капитала активирована</b>\n"
-                "<i>Система ограничивает количество сделок для предотвращения "
-                "эмоциональной торговли. Возвращайтесь завтра с чистой головой!</i>\n\n"
-                "⏳ Обновление в <b>00:00 (МСК)</b>"
+                "🔐 <b>Система защиты капитала активирована</b>\n"
+                "<i>Лимит защищает от эмоциональной торговли и "
+                "чрезмерных рисков. Возвращайтесь завтра с чистой головой!</i>\n\n"
+                "💡 <b>Хотите ещё больше сигналов?</b>\n"
+                "Перейдите в <b>«💎 Подписка»</b> — там доступно продление\n"
+                "или переход на более высокий тариф.\n\n"
+                "⏳ Обновление в <b>00:00 (МСК)</b>",
+                reply_markup=get_upgrade_kb(),
+                parse_mode="HTML"
             )
-        return await message.answer(risk_text, parse_mode="HTML")
 
     data = user_temp_data.get(uid)
     if not data or "pair" not in data:
@@ -1067,6 +1202,14 @@ async def get_signal(message: Message):
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     new_daily = daily + 1
 
+    # ── Оставшиеся сигналы — предупреждение ─────────────
+    remaining = current_limit - new_daily
+    limit_warning = ""
+    if remaining == 0:
+        limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
+    elif remaining <= 2:
+        limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
+
     # ── Формируем сигнал ────────────────────────────────
     if quote:
         direction, confidence = generate_signal_from_quote(quote)
@@ -1089,6 +1232,27 @@ async def get_signal(message: Message):
         conf_bar = confidence_bar(confidence)
 
         dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in direction else "🔴 PUT (ВНИЗ)"
+
+        # PRO-специфичный блок
+        pro_block = ""
+        if sub_type == "pro":
+            rsi_v = quote.get("rsi_value", 50)
+            if rsi_v > 70:
+                pro_tip = "⚠️ Зона перекупленности — рассмотрите PUT при откате"
+            elif rsi_v < 30:
+                pro_tip = "💡 Зона перепроданности — рассмотрите CALL при отскоке"
+            elif "высокая" in quote.get("volatility", ""):
+                pro_tip = "🔥 Высокая волатильность — сократите объём сделки"
+            else:
+                pro_tip = "✅ Стандартные условия — работайте по тренду"
+
+            pro_block = (
+                f"\n━━━━━━━━━━━━━━━━━\n"
+                f"🟣 <b>PRO АНАЛИТИКА:</b>\n"
+                f"  💬 {pro_tip}\n"
+                f"  📐 Рек. объём: <b>2–3% от депозита</b>\n"
+                f"  🎯 Мин. уверенность для входа: <b>87%+</b>\n"
+            )
 
         res = (
             f"⚡️ <b>ТОРГОВЫЙ СИГНАЛ СФОРМИРОВАН</b> ⚡️\n"
@@ -1114,8 +1278,10 @@ async def get_signal(message: Message):
             f"  ┌──────────────────┐\n"
             f"  │   {dir_badge}   │\n"
             f"  └──────────────────┘\n"
+            f"{pro_block}"
             f"━━━━━━━━━━━━━━━━━\n"
             f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
+            f"{limit_warning}\n"
             f"⚠️ <i>Money Management: 1–3% от баланса на сделку!</i>"
         )
     else:
@@ -1132,6 +1298,7 @@ async def get_signal(message: Message):
             f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
             f"━━━━━━━━━━━━━━━━━\n"
             f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
+            f"{limit_warning}\n"
             f"⚡ <i>Автономный режим (live-данные временно недоступны)</i>\n"
             f"⚠️ <i>Money Management: 1–3% от баланса!</i>"
         )
@@ -1156,8 +1323,13 @@ async def profile(message: Message):
     sub_emoji = sub_plan["emoji"]
 
     expiry_str = "∞ Бессрочно"
+    days_info  = ""
     if u['sub_expires']:
         expiry_str = u['sub_expires'].strftime("%d.%m.%Y %H:%M")
+        days_left  = max((u['sub_expires'] - datetime.now()).days, 0)
+        days_used  = 7 - days_left
+        bar        = days_bar(days_used, 7)
+        days_info  = f"\n  Осталось:  <code>[{bar}]</code> <b>{days_left} дн.</b>"
 
     next_title, next_level, signals_left = get_next_rank(u["signals"])
     rank_progress = ""
@@ -1167,6 +1339,7 @@ async def profile(message: Message):
     used_pct  = min(int((u["daily_count"] / sub_limit) * 10), 10)
     daily_bar = "▓" * used_pct + "░" * (10 - used_pct)
 
+    market_str = "🟢 Открыт (ПН–ПТ)" if is_market_open() else "🔴 Закрыт (выходной)"
     name = message.from_user.first_name or "Трейдер"
 
     await message.answer(
@@ -1180,13 +1353,16 @@ async def profile(message: Message):
         f"━━━━━━━━━━━━━━━━━\n"
         f"💎 <b>ПОДПИСКА:</b>\n"
         f"  Тариф:     {sub_emoji} <b>{u['sub_type'].upper()}</b>\n"
-        f"  Истекает:  <b>{expiry_str}</b>\n\n"
+        f"  Лимит:     <b>{sub_limit} сигналов / день</b>\n"
+        f"  Истекает:  <b>{expiry_str}</b>"
+        f"{days_info}\n\n"
         f"━━━━━━━━━━━━━━━━━\n"
         f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
         f"  Всего сигналов:   <b>{u['signals']}</b>\n"
         f"  Сегодня:\n"
         f"  <code>[{daily_bar}]</code> <b>{u['daily_count']} / {sub_limit}</b>\n\n"
         f"━━━━━━━━━━━━━━━━━\n"
+        f"🌐 Рынок сейчас: {market_str}\n"
         f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>ОГРАНИЧЕНА ❌</b>'}",
         parse_mode="HTML"
     )
@@ -1213,10 +1389,15 @@ async def stats(message: Message):
     wr_filled = int(win_rate / 10)
     wr_bar    = "█" * wr_filled + "░" * (10 - wr_filled)
 
+    market_note = ""
+    if not is_market_open():
+        market_note = "\n⚠️ <i>Рынок сейчас закрыт (выходной). Статистика за последний рабочий день.</i>\n"
+
     await message.answer(
         f"📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ТЕРМИНАЛА</b>\n"
-        f"━━━━━━━━━━━━━━━━━\n\n"
-        f"🕐 <b>За последние 24 часа:</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"{market_note}"
+        f"\n🕐 <b>За последние 24 часа:</b>\n\n"
         f"  WinRate:\n"
         f"  <code>[{wr_bar}] {win_rate}%</code>\n\n"
         f"  🟢 Профитных сделок:  <b>{plus_deals:,}</b>\n"
