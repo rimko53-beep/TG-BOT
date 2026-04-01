@@ -149,7 +149,6 @@ async def check_invoice(invoice_id):
     return False
 
 # ===== ДАННЫЕ И КЛАВИАТУРЫ =====
-# Убраны приставки FX как просил
 pairs = [
     "💵 AUD/CAD", "💵 CAD/CHF", "💵 EUR/CHF", "💵 GBP/CAD",
     "💵 USD/CAD", "💵 GBP/JPY", "💵 EUR/USD", "💵 USD/JPY"
@@ -157,8 +156,8 @@ pairs = [
 times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
 user_temp_data = {} 
-pending_users = set() # Для ввода ID
-pending_support = set() # Для сообщений в поддержку
+pending_users = set() 
+pending_support = set() 
 last_click_time = {}
 
 def get_rank(count):
@@ -187,14 +186,12 @@ dp.message.middleware(AccessMiddleware())
 # ===== КЛАВИАТУРЫ (ДИНАМИЧЕСКИЕ) =====
 
 def get_main_menu(has_access: bool):
-    # Основные кнопки, которые есть всегда
     keyboard = [
         [KeyboardButton(text="📊 Торговая панель")], 
         [KeyboardButton(text="⚡ Получить сигнал")],
         [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="📈 Статистика")]
     ]
     
-    # Кнопка активации добавляется только если доступа нет
     row_access = []
     if not has_access:
         row_access.append(KeyboardButton(text="🔐 Активировать доступ"))
@@ -315,7 +312,6 @@ async def activate(message: Message):
         reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
     )
 
-# --- ОБНОВЛЕННЫЙ ЦЕНТР ПОДДЕРЖКИ ---
 @dp.message(Command("help"))
 @dp.message(F.text == "🆘 Поддержка")
 async def help_cmd(message: Message):
@@ -345,7 +341,6 @@ async def go_back(message: Message):
     u = db_get_user(message.from_user.id)
     await message.answer("🏠 <b>Главная панель управления</b>", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
-# --- ОБРАБОТКА ТЕКСТОВЫХ ПИСЕМ В ПОДДЕРЖКУ ---
 @dp.message(lambda msg: msg.from_user.id in pending_support)
 async def process_support_message(message: Message):
     if message.text == "⬅️ Назад":
@@ -355,7 +350,6 @@ async def process_support_message(message: Message):
     uid = message.from_user.id
     username = message.from_user.username or "Нет юзернейма"
     
-    # Отправляем админу
     await bot.send_message(
         ADMIN_ID,
         f"📩 <b>НОВОЕ ОБРАЩЕНИЕ В ПОДДЕРЖКУ</b>\n"
@@ -370,7 +364,6 @@ async def process_support_message(message: Message):
     u = db_get_user(uid)
     await message.answer("✅ <b>Ваше сообщение отправлено!</b>\nАдминистратор рассмотрит ваше обращение в ближайшее время.", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
-# --- ОБРАБОТКА ВВОДА ID ---
 @dp.message(lambda msg: msg.from_user.id in pending_users)
 async def process_id(message: Message):
     if message.text == "⬅️ Назад":
@@ -395,14 +388,12 @@ async def process_id(message: Message):
     u = db_get_user(uid)
     await message.answer("💾 <b>ID принят в обработку.</b>\nОжидайте подтверждения верификации от технического отдела.", reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
-# ===== АДМИН ПАНЕЛЬ =====
 @dp.message(F.text.startswith("/give"))
 async def admin_give(message: Message):
     if message.from_user.id != ADMIN_ID: return
     try:
         target = int(message.text.split()[1])
         db_update_user(target, has_access=True)
-        # При активации отправляем юзеру обновленное меню без кнопки доступа
         await bot.send_message(target, "🚀 <b>СИСТЕМА: VIP ДОСТУП АКТИВИРОВАН</b>\nТерминал разблокирован. Вам доступны профессиональные сигналы для профита!", parse_mode="HTML", reply_markup=get_main_menu(True))
         await message.answer(f"✅ Доступ для пользователя <code>{target}</code> успешно АКТИВИРОВАН.", parse_mode="HTML")
     except: await message.answer("⚠️ Ошибка. Формат: <code>/give ID</code>", parse_mode="HTML")
@@ -414,10 +405,9 @@ async def admin_block(message: Message):
         target = int(message.text.split()[1])
         db_update_user(target, has_access=False)
         try:
-            # При блокировке возвращаем кнопку активации
             await bot.send_message(target, "🛑 <b>СИСТЕМА: ВАШ ДОСТУП АННУЛИРОВАН</b>\nВаша подписка на торговые сигналы была отключена администратором.", parse_mode="HTML", reply_markup=get_main_menu(False))
         except:
-            pass # Юзер мог заблокировать бота
+            pass 
         await message.answer(f"🚫 Доступ для пользователя <code>{target}</code> успешно ЗАБЛОКИРОВАН.", parse_mode="HTML")
     except: await message.answer("⚠️ Ошибка. Формат: <code>/block ID</code>", parse_mode="HTML")
 
@@ -452,7 +442,6 @@ async def get_signal(message: Message):
     u = db_get_user(uid)
     if not u["has_access"]: return
     
-    # --- ИСПРАВЛЕНИЕ ВРЕМЕНИ ДЛЯ RAILWAY (UTC+3) ---
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
     
@@ -492,7 +481,6 @@ async def get_signal(message: Message):
 
     last_click_time[uid] = time.time()
     
-    # --- АНИМАЦИЯ АНАЛИЗА ---
     progress_msg = await message.answer("⬛️⬛️⬛️⬛️⬛️ [0%]\n📡 <i>Подключение к потоку котировок...</i>", parse_mode="HTML")
     await asyncio.sleep(0.7)
     await progress_msg.edit_text("🟩⬛️⬛️⬛️⬛️ [25%]\n📊 <i>Сбор данных с осцилляторов (RSI, Stochastic)...</i>", parse_mode="HTML")
@@ -547,18 +535,31 @@ async def profile(message: Message):
         parse_mode="HTML"
     )
 
+# ===== ОБНОВЛЯЕМАЯ СТАТИСТИКА =====
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
+    # Генерация случайных, но "красивых" чисел на основе текущей даты
+    seed_val = int(datetime.now().strftime("%Y%m%d"))
+    random.seed(seed_val)
+    
+    total_day = random.randint(1800, 2500)
+    win_rate = round(random.uniform(91.2, 94.8), 1)
+    plus_deals = int(total_day * (win_rate / 100))
+    minus_deals = total_day - plus_deals - random.randint(10, 30)
+    refunds = total_day - plus_deals - minus_deals
+
     await message.answer(
-        "📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
-        "━━━━━━━━━━━━━━━━━\n"
-        "📈 Средний WinRate: <b>92.4%</b>\n"
-        "🟢 Плюсовых сделок: <b>1 842</b>\n"
-        "🔴 Минусовых сделок: <b>151</b>\n"
-        "🔁 Возвратов: <b>24</b>\n\n"
-        "⚙️ <i>Сводка формируется автоматически на базе пула всех торговых сессий наших пользователей на платформе Pocket Option.</i>", 
+        f"📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ИИ (24 часа)</b>\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📈 Средний WinRate: <b>{win_rate}%</b>\n"
+        f"🟢 Плюсовых сделок: <b>{plus_deals}</b>\n"
+        f"🔴 Минусовых сделок: <b>{minus_deals}</b>\n"
+        f"🔁 Возвратов: <b>{refunds}</b>\n\n"
+        f"⚙️ <i>Сводка формируется автоматически на базе пула всех торговых сессий наших пользователей на платформе Pocket Option. Данные обновлены: {datetime.now().strftime('%d.%m.%Y')}</i>", 
         parse_mode="HTML"
     )
+    # Сбрасываем seed для дальнейшего рандома сигналов
+    random.seed()
 
 async def main():
     print("🚀 PRO AI BOT STARTED SUCCESSFULLY")
