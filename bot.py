@@ -150,11 +150,10 @@ async def check_invoice(invoice_id):
 
 # ===== ДАННЫЕ И КЛАВИАТУРЫ =====
 pairs = [
-    "💵 EUR/USD OTC", "💵 GBP/USD OTC", "💵 USD/JPY OTC", "💵 AUD/USD OTC", "💵 USD/CAD OTC", 
-    "💵 EUR/GBP OTC", "💵 EUR/JPY OTC", "💵 GBP/JPY OTC", "💵 AUD/JPY OTC", "💵 NZD/USD OTC",
-    "💵 EUR/AUD OTC", "💵 GBP/AUD OTC", "💵 USD/CHF OTC", "💵 CAD/JPY OTC", "💵 NZD/JPY OTC"
+    "💵 AUD/CAD FX", "💵 CAD/CHF FX", "💵 EUR/CHF FX", "💵 GBP/CAD FX",
+    "💵 USD/CAD FX", "💵 GBP/JPY FX", "💵 EUR/USD FX", "💵 USD/JPY FX"
 ]
-times = ["⚡ 3 сек", "⚡ 15 сек", "⚡ 30 сек", "⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
+times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
 user_temp_data = {} 
 pending_users = set() # Для ввода ID
@@ -286,7 +285,7 @@ async def start(message: Message):
     u = db_get_user(message.from_user.id)
     
     start_text = (
-        "🖥 <b>AI TRADING TERMINAL | OTC PRO</b> 📈\n"
+        "🖥 <b>AI TRADING TERMINAL | FX PRO</b> 📈\n"
         "━━━━━━━━━━━━━━━━━\n"
         "💸 <b>Преврати трейдинг в систему с математическим перевесом!</b>\n\n"
         "Наш нейросетевой алгоритм анализирует паттерны Price Action, "
@@ -305,10 +304,11 @@ async def activate(message: Message):
         "💎 <b>ПОЛУЧЕНИЕ VIP-ЛИЦЕНЗИИ</b>\n"
         "━━━━━━━━━━━━━━━━━\n"
         "1️⃣ <b>Регистрация торгового счета:</b>\n"
-        "▫️ Global (Ссылка для всех стран): <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Официальный шлюз)</a>\n"
-        "▫️ RU/СНГ (Для людей из России и СНГ): <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1740378&ac=tgtraffic&cid=947232'>Pocket Option (Зеркало)</a>\n\n"
+        "▫️ Global (Ссылка для всех стран): <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1746882&ac=fx&cid=950203&code=ESX408'>Pocket Option (Официальный шлюз)</a>\n"
+        "▫️ RU/СНГ (Для людей из России и СНГ): <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1746882&ac=fx&cid=950203&code=ESX408'>Pocket Option (Зеркало)</a>\n\n"
         "2️⃣ <b>Депозит:</b> от <b>$50</b> (для соблюдения риск-менеджмента 1-5% на сделку)\n"
         "3️⃣ <b>Синхронизация:</b> Жми кнопку ниже и отправь свой <b>ID Pocket Option</b>\n\n"
+        "🎁 <b>БОНУС:</b> При регистрации по ссылкам выше вы получите <b>подарок +60% к депозиту</b> (плюшка для быстрого старта)!\n\n"
         "⚠️ <b>ВАЖНО:</b> Если у вас уже есть аккаунт Pocket Option, созданный не по нашей ссылке, бот не сможет его распознать. В этом случае вам необходимо <b>удалить ваш текущий аккаунт и заново зарегистрироваться</b> строго по ссылке бота выше. Других вариантов активации нет. После регистрации пополните депозит и отправьте ID вашего профиля из личного кабинета.\n\n"
         "🛡 <i>После проверки ИИ подключит ваш аккаунт к пулу сигналов.</i>", 
         reply_markup=access_kb, parse_mode="HTML", disable_web_page_preview=True
