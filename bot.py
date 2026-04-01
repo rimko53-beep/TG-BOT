@@ -149,9 +149,10 @@ async def check_invoice(invoice_id):
     return False
 
 # ===== ДАННЫЕ И КЛАВИАТУРЫ =====
+# Убраны приставки FX как просил
 pairs = [
-    "💵 AUD/CAD FX", "💵 CAD/CHF FX", "💵 EUR/CHF FX", "💵 GBP/CAD FX",
-    "💵 USD/CAD FX", "💵 GBP/JPY FX", "💵 EUR/USD FX", "💵 USD/JPY FX"
+    "💵 AUD/CAD", "💵 CAD/CHF", "💵 EUR/CHF", "💵 GBP/CAD",
+    "💵 USD/CAD", "💵 GBP/JPY", "💵 EUR/USD", "💵 USD/JPY"
 ]
 times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
