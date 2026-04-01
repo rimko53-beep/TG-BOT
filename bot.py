@@ -44,14 +44,42 @@ SUBSCRIPTION_PLANS = {
 #         МАППИНГ ПАР → TWELVE DATA
 # ═══════════════════════════════════════════════
 PAIR_TO_SYMBOL = {
-    "💵 AUD/CAD": "AUD/CAD",
-    "💵 CAD/CHF": "CAD/CHF",
-    "💵 EUR/CHF": "EUR/CHF",
-    "💵 GBP/CAD": "GBP/CAD",
-    "💵 USD/CAD": "USD/CAD",
-    "💵 GBP/JPY": "GBP/JPY",
     "💵 EUR/USD": "EUR/USD",
+    "💵 GBP/USD": "GBP/USD",
     "💵 USD/JPY": "USD/JPY",
+    "💵 USD/CAD": "USD/CAD",
+    "💵 AUD/CAD": "AUD/CAD",
+    "💵 EUR/CHF": "EUR/CHF",
+}
+
+# ═══════════════════════════════════════════════
+#         ЛУЧШЕЕ ВРЕМЯ ТОРГОВЛИ ПО ПАРЕ
+# ═══════════════════════════════════════════════
+PAIR_BEST_TIME = {
+    "💵 EUR/USD": {
+        "window": "10:00 – 19:00 МСК",
+        "note": "Самая техничная пара в мире. Минимум ложных сигналов. Работает на Лондон + Нью-Йорк сессию."
+    },
+    "💵 GBP/USD": {
+        "window": "11:00 – 18:00 МСК",
+        "note": "Высокая волатильность на открытии Лондона. Сильные движения при выходе UK-статистики."
+    },
+    "💵 USD/JPY": {
+        "window": "03:00 – 12:00 МСК",
+        "note": "Лучшие движения на Азиатской и начале Европейской сессии. Техничная и трендовая пара."
+    },
+    "💵 USD/CAD": {
+        "window": "15:00 – 21:00 МСК",
+        "note": "Оживает с открытием Нью-Йорка и выходом нефтяной статистики. Чёткие уровни."
+    },
+    "💵 AUD/CAD": {
+        "window": "05:00 – 13:00 МСК",
+        "note": "Активна в Азиатскую и начало Европейской сессии. Коррелирует с сырьевыми рынками."
+    },
+    "💵 EUR/CHF": {
+        "window": "09:00 – 17:00 МСК",
+        "note": "Спокойная и техничная пара. Лучшие сигналы в Европейскую сессию, низкий спред."
+    },
 }
 
 # ═══════════════════════════════════════════════
@@ -435,8 +463,8 @@ def days_bar(used: int, total: int) -> str:
 #              ВРЕМЕННЫЕ ДАННЫЕ
 # ═══════════════════════════════════════════════
 pairs = [
-    "💵 AUD/CAD", "💵 CAD/CHF", "💵 EUR/CHF", "💵 GBP/CAD",
-    "💵 USD/CAD", "💵 GBP/JPY", "💵 EUR/USD", "💵 USD/JPY"
+    "💵 EUR/USD", "💵 GBP/USD", "💵 USD/JPY",
+    "💵 USD/CAD", "💵 AUD/CAD", "💵 EUR/CHF",
 ]
 times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
@@ -748,8 +776,22 @@ async def about_bot(message: Message):
         "📡 <b>Источник данных:</b> Twelve Data (live)\n"
         "🧠 <b>Алгоритм:</b> RSI + свечной анализ + тренд\n"
         "📊 <b>Платформа:</b> Pocket Option\n"
-        "💱 <b>Пары:</b> 8 валютных инструментов\n"
+        "💱 <b>Пары:</b> 6 валютных инструментов\n"
         "⏱ <b>Таймфреймы:</b> 1, 3, 5, 10 минут\n\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        "💱 <b>ТОРГОВЫЕ ПАРЫ И ЛУЧШЕЕ ВРЕМЯ:</b>\n\n"
+        "🔹 <b>EUR/USD</b> — 10:00–19:00 МСК\n"
+        "  <i>Самая техничная пара в мире. Минимум ложных сигналов.</i>\n\n"
+        "🔹 <b>GBP/USD</b> — 11:00–18:00 МСК\n"
+        "  <i>Высокая волатильность на открытии Лондона.</i>\n\n"
+        "🔹 <b>USD/JPY</b> — 03:00–12:00 МСК\n"
+        "  <i>Лучшие движения в Азиатскую и начале Европейской сессии.</i>\n\n"
+        "🔹 <b>USD/CAD</b> — 15:00–21:00 МСК\n"
+        "  <i>Оживает с открытием Нью-Йорка и выходом нефтяной статистики.</i>\n\n"
+        "🔹 <b>AUD/CAD</b> — 05:00–13:00 МСК\n"
+        "  <i>Активна в Азиатскую и начало Европейской сессии.</i>\n\n"
+        "🔹 <b>EUR/CHF</b> — 09:00–17:00 МСК\n"
+        "  <i>Спокойная и техничная пара. Лучшие сигналы в Европейскую сессию.</i>\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "⏰ <b>РЕЖИМ РАБОТЫ:</b>\n"
         "  🟢 ПН–ПТ: 24/7 (круглосуточно)\n"
@@ -1052,8 +1094,8 @@ async def t_panel(message: Message):
         "📊 <b>ТОРГОВАЯ ПАНЕЛЬ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         "Выберите <b>валютную пару</b> для анализа:\n\n"
-        "🔹 Мажорные пары: EUR/USD, USD/JPY, GBP/JPY\n"
-        "🔹 Кросс-пары: AUD/CAD, CAD/CHF, EUR/CHF, GBP/CAD, USD/CAD",
+        "🔹 Мажорные пары: EUR/USD, GBP/USD, USD/JPY\n"
+        "🔹 Кросс-пары: USD/CAD, AUD/CAD, EUR/CHF",
         reply_markup=pair_kb,
         parse_mode="HTML"
     )
@@ -1064,9 +1106,21 @@ async def set_pair(message: Message):
         return await message.answer(get_market_closed_text(), parse_mode="HTML")
 
     user_temp_data[message.from_user.id] = {"pair": message.text}
+
+    # Показываем лучшее время для выбранной пары
+    best = PAIR_BEST_TIME.get(message.text, {})
+    best_time_block = ""
+    if best:
+        best_time_block = (
+            f"\n\n⏰ <b>Лучшее время для {message.text.replace('💵 ', '')}:</b>\n"
+            f"  🟢 <b>{best['window']}</b>\n"
+            f"  <i>{best['note']}</i>"
+        )
+
     await message.answer(
-        f"✅ <b>Актив выбран:</b> {message.text}\n\n"
-        "⏱ Выберите <b>время экспирации</b> опциона:",
+        f"✅ <b>Актив выбран:</b> {message.text}"
+        f"{best_time_block}\n\n"
+        f"⏱ Выберите <b>время экспирации</b> опциона:",
         reply_markup=time_kb,
         parse_mode="HTML"
     )
@@ -1081,12 +1135,18 @@ async def set_time(message: Message):
         user_temp_data[uid] = {}
     user_temp_data[uid]["time"] = message.text
     pair = user_temp_data[uid].get('pair', '—')
+
+    # Лучшее время для выбранной пары
+    best = PAIR_BEST_TIME.get(pair, {})
+    best_time_str = f"  ⏰ Лучшее окно: <b>{best['window']}</b>\n" if best else ""
+
     await message.answer(
         f"⚙️ <b>КОНФИГУРАЦИЯ СОХРАНЕНА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n\n"
         f"  📊 Актив:       <b>{pair}</b>\n"
-        f"  ⏱ Экспирация:  <b>{message.text}</b>\n\n"
-        f"━━━━━━━━━━━━━━━━━\n"
+        f"  ⏱ Экспирация:  <b>{message.text}</b>\n"
+        f"{best_time_str}"
+        f"\n━━━━━━━━━━━━━━━━━\n"
         f"<i>Алгоритм настроен. Нажмите «⚡ Получить сигнал» для анализа рынка.</i>",
         reply_markup=signal_kb,
         parse_mode="HTML"
@@ -1209,6 +1269,18 @@ async def get_signal(message: Message):
     elif remaining <= 2:
         limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
 
+    # ── Блок лучшего времени для пары ───────────────────
+    best = PAIR_BEST_TIME.get(data["pair"], {})
+    best_time_block = ""
+    if best:
+        now_msk = datetime.utcnow() + timedelta(hours=3)
+        best_time_block = (
+            f"\n━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <b>ОПТИМАЛЬНОЕ ВРЕМЯ:</b>\n"
+            f"  🟢 <b>{best['window']}</b>\n"
+            f"  <i>{best['note']}</i>\n"
+        )
+
     # ── Формируем сигнал ────────────────────────────────
     if quote:
         direction, confidence = generate_signal_from_quote(quote)
@@ -1277,6 +1349,7 @@ async def get_signal(message: Message):
             f"  ┌──────────────────┐\n"
             f"  │   {dir_badge}   │\n"
             f"  └──────────────────┘\n"
+            f"{best_time_block}"
             f"{pro_block}"
             f"━━━━━━━━━━━━━━━━━\n"
             f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
@@ -1295,6 +1368,7 @@ async def get_signal(message: Message):
             f"🧠 <b>УВЕРЕННОСТЬ ИИ:</b>\n"
             f"  <code>{conf_bar}</code> <b>{confidence}%</b>\n\n"
             f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
+            f"{best_time_block}"
             f"━━━━━━━━━━━━━━━━━\n"
             f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
             f"{limit_warning}\n"
@@ -1380,7 +1454,7 @@ async def stats(message: Message):
     minus_deals  = total_day - plus_deals - random.randint(10, 30)
     refunds      = total_day - plus_deals - minus_deals
     avg_profit   = round(random.uniform(82.5, 91.3), 1)
-    best_pair    = random.choice(["EUR/USD", "GBP/JPY", "USD/JPY", "AUD/CAD"])
+    best_pair    = random.choice(["EUR/USD", "GBP/USD", "USD/JPY", "AUD/CAD"])
     peak_hour    = random.randint(10, 18)
     total_users  = db_get_total_users()
     active_users = db_get_active_users()
