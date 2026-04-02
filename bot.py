@@ -32,7 +32,6 @@ dp = Dispatcher()
 
 # ═══════════════════════════════════════════════
 #              ПЛАНЫ ПОДПИСОК
-# Лимиты: FREE=5, JUNIOR=15, PRO=30
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
     "free":   {"limit": 5,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
@@ -50,6 +49,16 @@ PAIR_TO_SYMBOL = {
     "💵 USD/CAD": "USD/CAD",
     "💵 AUD/CAD": "AUD/CAD",
     "💵 EUR/CHF": "EUR/CHF",
+}
+
+# Валюты, которые затрагивает каждая пара (для фильтрации новостей)
+PAIR_CURRENCIES = {
+    "💵 EUR/USD": ["USD", "EUR"],
+    "💵 GBP/USD": ["USD", "GBP"],
+    "💵 USD/JPY": ["USD", "JPY"],
+    "💵 USD/CAD": ["USD", "CAD"],
+    "💵 AUD/CAD": ["AUD", "CAD"],
+    "💵 EUR/CHF": ["EUR", "CHF"],
 }
 
 # ═══════════════════════════════════════════════
@@ -84,13 +93,10 @@ PAIR_BEST_TIME = {
 
 # ═══════════════════════════════════════════════
 #         ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ РЫНКА
-#  ПН–ПТ: работает круглосуточно
-#  СБ–ВС: закрыт
 # ═══════════════════════════════════════════════
 def is_market_open() -> bool:
-    """Возвращает True если сегодня будний день (ПН–ПТ)."""
-    now = datetime.utcnow() + timedelta(hours=3)  # МСК
-    return now.weekday() < 5  # 0=ПН, 4=ПТ, 5=СБ, 6=ВС
+    now = datetime.utcnow() + timedelta(hours=3)
+    return now.weekday() < 5
 
 def get_market_closed_text() -> str:
     now = datetime.utcnow() + timedelta(hours=3)
@@ -136,6 +142,31 @@ def init_db():
                 username        TEXT,
                 first_seen      TIMESTAMP DEFAULT NOW(),
                 last_active     TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        # Таблица новостей (блокнот)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news_events (
+                id              SERIAL PRIMARY KEY,
+                event_time      TEXT,
+                event_time_dt   TIMESTAMP,
+                title           TEXT,
+                currency        TEXT,
+                impact          INTEGER DEFAULT 3,
+                event_date      TEXT,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        # Таблица автосигналов
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auto_signals (
+                id              SERIAL PRIMARY KEY,
+                pair            TEXT,
+                direction       TEXT,
+                confidence      INTEGER,
+                reason          TEXT,
+                signal_date     TEXT,
+                sent_at         TIMESTAMP DEFAULT NOW()
             )
         """)
         for col, definition in [
@@ -249,11 +280,213 @@ def db_get_active_users():
     except:
         return 0
 
-init_db()
+def db_get_all_users_with_access():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users WHERE has_access = TRUE")
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except:
+        return []
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+#      БЛОКНОТ НОВОСТЕЙ (Investing.com scraper)
+# ════════════════════════════════════════════════
+async def fetch_investing_news() -> list[dict]:
+    """
+    Парсит экономический календарь Investing.com и возвращает
+    только события с высоким импактом (3 быка) на сегодня (МСК).
+    """
+    today_msk = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+    url = "https://www.investing.com/economic-calendar/"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.investing.com/",
+    }
+    events = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    print(f"Investing.com HTTP {resp.status}")
+                    return []
+                html = await resp.text()
+
+        # Парсим строки таблицы вручную (без beautifulsoup)
+        import re
+
+        # Ищем строки с high impact (bull3 / sentiment3 / impact-high)
+        # Investing маркирует важность классом "bull" * N или data-img_key="bull3"
+        row_pattern = re.compile(
+            r'<tr[^>]*?id="eventRowId_(\d+)"[^>]*?>(.*?)</tr>',
+            re.DOTALL
+        )
+        time_pattern   = re.compile(r'class="time[^"]*"[^>]*>([^<]+)<')
+        title_pattern  = re.compile(r'class="event[^"]*"[^>]*>([^<]+)<')
+        curr_pattern   = re.compile(r'class="flagCur[^"]*"[^>]*>\s*<[^>]+>\s*([A-Z]{3})')
+        impact_pattern = re.compile(r'data-img_key="bull(\d)"')
+
+        for m in row_pattern.finditer(html):
+            row_html = m.group(2)
+
+            impact_m = impact_pattern.search(row_html)
+            if not impact_m or int(impact_m.group(1)) < 3:
+                continue
+
+            time_m  = time_pattern.search(row_html)
+            title_m = title_pattern.search(row_html)
+            curr_m  = curr_pattern.search(row_html)
+
+            if not (time_m and title_m and curr_m):
+                continue
+
+            event_time_str = time_m.group(1).strip()
+            title          = title_m.group(1).strip()
+            currency       = curr_m.group(1).strip()
+
+            # Парсим время события в МСК
+            try:
+                # Investing показывает время в GMT, добавляем +3
+                event_dt_str = f"{today_msk} {event_time_str}"
+                event_dt_gmt = datetime.strptime(event_dt_str, "%Y-%m-%d %H:%M")
+                event_dt_msk = event_dt_gmt + timedelta(hours=3)
+            except Exception:
+                event_dt_msk = None
+
+            events.append({
+                "event_time":    event_dt_msk.strftime("%H:%M") if event_dt_msk else event_time_str,
+                "event_time_dt": event_dt_msk,
+                "title":         title,
+                "currency":      currency,
+                "impact":        3,
+                "event_date":    today_msk,
+            })
+
+    except Exception as e:
+        print(f"Ошибка парсинга Investing.com: {e}")
+
+    return events
+
+
+def db_save_news(events: list[dict]):
+    """Сохраняет новости в БД (перезаписывает за сегодня)."""
+    if not events:
+        return
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+    try:
+        conn   = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM news_events WHERE event_date = %s", (today,))
+        for ev in events:
+            cursor.execute(
+                """INSERT INTO news_events
+                   (event_time, event_time_dt, title, currency, impact, event_date)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (ev["event_time"], ev["event_time_dt"], ev["title"],
+                 ev["currency"], ev["impact"], ev["event_date"])
+            )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"✅ Сохранено {len(events)} новостей в блокнот")
+    except Exception as e:
+        print(f"Ошибка сохранения новостей: {e}")
+
+
+def db_get_today_news() -> list[dict]:
+    """Возвращает все важные новости за сегодня."""
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+    try:
+        conn   = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            "SELECT * FROM news_events WHERE event_date = %s ORDER BY event_time_dt ASC",
+            (today,)
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"Ошибка чтения новостей: {e}")
+        return []
+
+
+def check_news_danger_for_pair(pair_label: str) -> dict:
+    """
+    Проверяет: есть ли рядом (±30 мин) важные новости по валютам пары.
+    Возвращает: {"dangerous": bool, "minutes": int, "event": str, "currency": str}
+    """
+    currencies = PAIR_CURRENCIES.get(pair_label, [])
+    now_msk = datetime.utcnow() + timedelta(hours=3)
+    news = db_get_today_news()
+
+    closest = None
+    closest_delta = None
+
+    for ev in news:
+        if ev["currency"] not in currencies:
+            continue
+        if not ev.get("event_time_dt"):
+            continue
+        ev_dt = ev["event_time_dt"]
+        if isinstance(ev_dt, str):
+            try:
+                ev_dt = datetime.strptime(ev_dt, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                continue
+        delta_minutes = (ev_dt - now_msk).total_seconds() / 60
+        abs_delta = abs(delta_minutes)
+        if abs_delta <= 30:
+            if closest_delta is None or abs_delta < closest_delta:
+                closest_delta = abs_delta
+                closest = {"ev": ev, "delta": delta_minutes}
+
+    if closest:
+        ev = closest["ev"]
+        delta = closest["delta"]
+        if delta >= 0:
+            desc = f"через {int(delta)} мин"
+        else:
+            desc = f"{int(abs(delta))} мин назад"
+        return {
+            "dangerous": True,
+            "minutes":   int(delta),
+            "event":     ev["title"],
+            "currency":  ev["currency"],
+            "time":      ev["event_time"],
+            "desc":      desc,
+        }
+    return {"dangerous": False}
+
+
+async def news_scheduler():
+    """Фоновая задача: каждый час обновляет блокнот новостей."""
+    while True:
+        try:
+            print("📰 Обновление блокнота новостей...")
+            events = await fetch_investing_news()
+            if events:
+                db_save_news(events)
+                print(f"📰 Загружено {len(events)} важных событий")
+            else:
+                print("📰 Нет важных событий или ошибка парсинга")
+        except Exception as e:
+            print(f"Ошибка news_scheduler: {e}")
+        await asyncio.sleep(3600)  # раз в час
+
+
+# ════════════════════════════════════════════════
 #              CRYPTO BOT API
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 async def create_invoice(amount, plan_name):
     url     = "https://pay.crypt.bot/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
@@ -278,15 +511,14 @@ async def check_invoice(invoice_id):
                 return data['result']['items'][0]['status'] == 'paid'
     return False
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #         ПОЛУЧЕНИЕ КОТИРОВОК (TWELVE DATA)
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 async def get_real_quote(pair_label: str) -> dict | None:
     symbol = PAIR_TO_SYMBOL.get(pair_label)
     if not symbol:
         return None
 
-    # Запрашиваем последние 10 свечей по 1 минуте
     url = (
         f"https://api.twelvedata.com/time_series"
         f"?symbol={symbol}"
@@ -299,20 +531,16 @@ async def get_real_quote(pair_label: str) -> dict | None:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
-                    print(f"TwelveData HTTP {resp.status} для {symbol}")
                     return None
                 data = await resp.json()
 
-        # Проверяем статус ответа
         if data.get("status") == "error" or "values" not in data:
-            print(f"TwelveData ошибка для {symbol}: {data.get('message', 'нет данных')}")
             return None
 
-        values = data["values"]  # список свечей, первая — самая свежая
+        values = data["values"]
         if not values:
             return None
 
-        # Парсим свечи (TwelveData возвращает строки)
         opens  = [float(v["open"])  for v in reversed(values)]
         closes = [float(v["close"]) for v in reversed(values)]
         highs  = [float(v["high"])  for v in reversed(values)]
@@ -324,14 +552,12 @@ async def get_real_quote(pair_label: str) -> dict | None:
         change     = current_price - prev_close
         change_pct = (change / prev_close) * 100 if prev_close != 0 else 0.0
 
-        # Направление последней свечи
         last_open  = opens[-1]
         last_close = closes[-1]
         if   last_close > last_open: candle_direction = "bullish"
         elif last_close < last_open: candle_direction = "bearish"
         else:                        candle_direction = "neutral"
 
-        # Мини-RSI по закрытиям
         rsi_value  = 50.0
         rsi_signal = "нейтральный"
         if len(closes) >= 3:
@@ -349,14 +575,12 @@ async def get_real_quote(pair_label: str) -> dict | None:
             elif rsi_value < 40: rsi_signal = f"перепроданность ({rsi_value:.0f})"
             else:                rsi_signal = f"нейтральный ({rsi_value:.0f})"
 
-        # Волатильность
         volatility = "низкая"
         if highs and lows:
             avg_range = sum(h - l for h, l in zip(highs, lows)) / len(highs)
             if   avg_range > current_price * 0.0005: volatility = "высокая 🔥"
             elif avg_range > current_price * 0.0002: volatility = "средняя"
 
-        # Тренд
         trend = "боковик"
         if len(closes) >= 2:
             diff = closes[-1] - closes[0]
@@ -376,28 +600,48 @@ async def get_real_quote(pair_label: str) -> dict | None:
             "high":             max(highs),
             "low":              min(lows),
             "candles_count":    len(closes),
+            "closes":           closes,
+            "opens":            opens,
         }
 
     except Exception as e:
-        print(f"Ошибка получения котировки TwelveData {symbol}: {e}")
+        print(f"Ошибка TwelveData {symbol}: {e}")
         return None
 
 
-def generate_signal_from_quote(quote: dict) -> tuple[str, int]:
+def generate_signal_from_quote(quote: dict) -> tuple[str, int, str]:
+    """Возвращает (direction, confidence, reason)."""
     score = 0
+    reasons = []
 
-    if   quote["candle_direction"] == "bullish": score += 2
-    elif quote["candle_direction"] == "bearish": score -= 2
+    if quote["candle_direction"] == "bullish":
+        score += 2
+        reasons.append("бычья свеча")
+    elif quote["candle_direction"] == "bearish":
+        score -= 2
+        reasons.append("медвежья свеча")
 
-    if   quote["change_pct"] > 0.01:  score += 1
-    elif quote["change_pct"] < -0.01: score -= 1
+    if quote["change_pct"] > 0.01:
+        score += 1
+        reasons.append("позитивная динамика цены")
+    elif quote["change_pct"] < -0.01:
+        score -= 1
+        reasons.append("негативная динамика цены")
 
     rsi_str = quote["rsi_signal"]
-    if   "перепроданность" in rsi_str: score += 2
-    elif "перекупленность" in rsi_str: score -= 2
+    if "перепроданность" in rsi_str:
+        score += 2
+        reasons.append(f"RSI в зоне перепроданности — ожидается отскок вверх")
+    elif "перекупленность" in rsi_str:
+        score -= 2
+        reasons.append(f"RSI в зоне перекупленности — ожидается откат вниз")
 
-    if   "восходящий" in quote.get("trend", ""): score += 1
-    elif "нисходящий" in quote.get("trend", ""): score -= 1
+    if "восходящий" in quote.get("trend", ""):
+        score += 1
+        reasons.append("восходящий тренд подтверждён")
+    elif "нисходящий" in quote.get("trend", ""):
+        score -= 1
+        reasons.append("нисходящий тренд подтверждён")
 
     score += random.choice([-1, 0, 0, 1])
 
@@ -412,12 +656,189 @@ def generate_signal_from_quote(quote: dict) -> tuple[str, int]:
     elif abs_score == 2: confidence = random.randint(85, 90)
     else:                confidence = random.randint(82, 87)
 
-    return direction, confidence
+    reason_text = ", ".join(reasons[:3]) if reasons else "технический анализ"
+    return direction, confidence, reason_text
 
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
+#         СИЛА ВАЛЮТНЫХ ПАР (для статистики)
+# ════════════════════════════════════════════════
+async def get_pairs_strength() -> list[dict]:
+    """
+    Получает котировки по всем парам и ранжирует их по силе движения.
+    """
+    results = []
+    for pair_label, symbol in PAIR_TO_SYMBOL.items():
+        try:
+            url = (
+                f"https://api.twelvedata.com/time_series"
+                f"?symbol={symbol}&interval=1h&outputsize=5"
+                f"&apikey={TWELVEDATA_API_KEY}"
+            )
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+
+            if data.get("status") == "error" or "values" not in data:
+                continue
+
+            values = data["values"]
+            if not values or len(values) < 2:
+                continue
+
+            closes = [float(v["close"]) for v in reversed(values)]
+            highs  = [float(v["high"])  for v in reversed(values)]
+            lows   = [float(v["low"])   for v in reversed(values)]
+
+            price     = closes[-1]
+            prev      = closes[0]
+            change_pct = ((price - prev) / prev) * 100 if prev != 0 else 0.0
+            avg_range  = sum(h - l for h, l in zip(highs, lows)) / len(highs)
+            volatility_pct = (avg_range / price) * 100 if price != 0 else 0.0
+
+            if   change_pct > 0.05: trend = "🟢 Бычий"
+            elif change_pct < -0.05: trend = "🔴 Медвежий"
+            else: trend = "⚪ Боковик"
+
+            pair_name = pair_label.replace("💵 ", "")
+            results.append({
+                "pair":          pair_name,
+                "price":         price,
+                "change_pct":    change_pct,
+                "volatility":    volatility_pct,
+                "trend":         trend,
+            })
+            await asyncio.sleep(0.2)
+        except Exception as e:
+            print(f"Ошибка силы пары {symbol}: {e}")
+
+    results.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+    return results
+
+
+# ════════════════════════════════════════════════
+#         АВТОСИГНАЛЫ (фоновая задача)
+# ════════════════════════════════════════════════
+async def auto_signals_scheduler():
+    """
+    Каждые 20 минут анализирует рынок и отправляет автосигналы
+    (не более 3 в сутки), только если уверенность >= 93%.
+    """
+    await asyncio.sleep(60)  # Ждём запуска бота
+    while True:
+        try:
+            if is_market_open():
+                today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+
+                # Считаем сколько автосигналов уже отправили сегодня
+                try:
+                    conn   = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM auto_signals WHERE signal_date = %s",
+                        (today,)
+                    )
+                    sent_today = cursor.fetchone()[0]
+                    cursor.close()
+                    conn.close()
+                except:
+                    sent_today = 0
+
+                if sent_today < 3:
+                    best_signal = None
+                    best_conf   = 0
+
+                    for pair_label in PAIR_TO_SYMBOL.keys():
+                        # Проверяем новостную опасность
+                        danger = check_news_danger_for_pair(pair_label)
+                        if danger["dangerous"]:
+                            continue
+
+                        quote = await get_real_quote(pair_label)
+                        if not quote:
+                            continue
+
+                        direction, confidence, reason = generate_signal_from_quote(quote)
+
+                        if confidence >= 93 and confidence > best_conf:
+                            best_conf   = confidence
+                            best_signal = {
+                                "pair":      pair_label,
+                                "direction": direction,
+                                "confidence": confidence,
+                                "reason":    reason,
+                                "quote":     quote,
+                            }
+
+                    if best_signal:
+                        s = best_signal
+                        conf_bar = confidence_bar(s["confidence"])
+                        dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in s["direction"] else "🔴 PUT (ВНИЗ)"
+
+                        # Формируем сообщение автосигнала
+                        price = s["quote"]["price"]
+                        price_str = f"{price:.3f}" if price > 100 else f"{price:.5f}"
+
+                        text = (
+                            "🔔 <b>БЕСПЛАТНЫЙ VIP-АВТОСИГНАЛ</b>\n"
+                            "━━━━━━━━━━━━━━━━━\n\n"
+                            f"  📊 Актив:      <b>{s['pair']}</b>\n"
+                            f"  💰 Цена:       <b>{price_str}</b>\n"
+                            f"  ⏱ Экспирация: <b>⏱ 3 мин</b>\n\n"
+                            f"🧠 <b>УВЕРЕННОСТЬ ИИ:</b>\n"
+                            f"  <code>{conf_bar}</code> <b>{s['confidence']}%</b>\n\n"
+                            f"🚀 <b>РЕКОМЕНДАЦИЯ:</b>\n"
+                            f"  ┌──────────────────┐\n"
+                            f"  │   {dir_badge}   │\n"
+                            f"  └──────────────────┘\n\n"
+                            f"💡 <b>Почему вошли:</b>\n"
+                            f"  <i>{s['reason']}</i>\n\n"
+                            f"━━━━━━━━━━━━━━━━━\n"
+                            f"⚠️ <i>Money Management: 1–3% от баланса!\n"
+                            f"Это автосигнал высокой уверенности. Макс. 3 в день.</i>"
+                        )
+
+                        # Отправляем всем пользователям с доступом
+                        users = db_get_all_users_with_access()
+                        sent_count = 0
+                        for uid in users:
+                            try:
+                                await bot.send_message(uid, text, parse_mode="HTML")
+                                sent_count += 1
+                                await asyncio.sleep(0.05)
+                            except Exception:
+                                pass
+
+                        # Сохраняем запись об автосигнале
+                        try:
+                            conn   = get_db_connection()
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                """INSERT INTO auto_signals
+                                   (pair, direction, confidence, reason, signal_date)
+                                   VALUES (%s, %s, %s, %s, %s)""",
+                                (s["pair"], s["direction"], s["confidence"],
+                                 s["reason"], today)
+                            )
+                            conn.commit()
+                            cursor.close()
+                            conn.close()
+                        except Exception as e:
+                            print(f"Ошибка сохранения автосигнала: {e}")
+
+                        print(f"✅ Автосигнал отправлен {sent_count} пользователям | {s['pair']} | {s['confidence']}%")
+
+        except Exception as e:
+            print(f"Ошибка auto_signals_scheduler: {e}")
+
+        await asyncio.sleep(1200)  # каждые 20 минут
+
+
+# ════════════════════════════════════════════════
 #         РАНГИ И УТИЛИТЫ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 RANKS = [
     (0,   50,  "🌱 Новичок",      "Retail"),
     (51,  150, "📊 Трейдер",       "Prop Firm"),
@@ -453,29 +874,41 @@ def confidence_bar(pct: int) -> str:
     return "▓" * filled + "░" * (10 - filled)
 
 def days_bar(used: int, total: int) -> str:
-    """Прогресс-бар для дней подписки."""
     pct = used / total if total > 0 else 0
     filled = int(pct * 10)
     return "█" * filled + "░" * (10 - filled)
 
+def calc_lot(balance: float) -> dict:
+    """Калькулятор лота: рекомендации по сумме сделки."""
+    conservative = round(balance * 0.01, 2)   # 1%
+    moderate     = round(balance * 0.02, 2)   # 2%
+    aggressive   = round(balance * 0.03, 2)   # 3%
+    max_risk     = round(balance * 0.05, 2)   # 5% — красная зона
+    return {
+        "conservative": conservative,
+        "moderate":     moderate,
+        "aggressive":   aggressive,
+        "max_risk":     max_risk,
+    }
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ВРЕМЕННЫЕ ДАННЫЕ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 pairs = [
     "💵 EUR/USD", "💵 GBP/USD", "💵 USD/JPY",
     "💵 USD/CAD", "💵 AUD/CAD", "💵 EUR/CHF",
 ]
 times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 
-user_temp_data  = {}
-pending_users   = set()
-pending_support = set()
-last_click_time = {}
+user_temp_data   = {}
+pending_users    = set()
+pending_support  = set()
+pending_lot_calc = set()   # ожидают ввода баланса для калькулятора
+last_click_time  = {}
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              MIDDLEWARE
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 class AccessMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         if isinstance(event, Message):
@@ -503,14 +936,15 @@ class AccessMiddleware(BaseMiddleware):
 
 dp.message.middleware(AccessMiddleware())
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              КЛАВИАТУРЫ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 def get_main_menu(has_access: bool):
     keyboard = [
         [KeyboardButton(text="📊 Торговая панель"), KeyboardButton(text="⚡ Получить сигнал")],
         [KeyboardButton(text="👤 Профиль"),          KeyboardButton(text="📈 Статистика")],
         [KeyboardButton(text="💎 Подписка"),          KeyboardButton(text="🚀 О боте")],
+        [KeyboardButton(text="📰 Новости рынка"),     KeyboardButton(text="🧮 Калькулятор лота")],
     ]
     row_bottom = []
     if not has_access:
@@ -547,7 +981,6 @@ back_kb = ReplyKeyboardMarkup(
 )
 
 def get_sub_kb(current_plan: str = "free"):
-    """Кнопки подписки с учётом текущего тарифа (показываем продление)."""
     buttons = []
     if current_plan == "free":
         buttons.append([InlineKeyboardButton(text="🔵 JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
@@ -562,7 +995,6 @@ def get_sub_kb(current_plan: str = "free"):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_upgrade_kb():
-    """Кнопка перехода в подписку из блока лимита."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔵 JUNIOR — 15 сигналов/день | 50$", callback_data="buy_junior")],
         [InlineKeyboardButton(text="🟣 PRO — 30 сигналов/день | 100$",   callback_data="buy_pro")],
@@ -576,9 +1008,9 @@ def get_confirm_sub_kb(invoice_url, invoice_id, plan_key):
         [InlineKeyboardButton(text="🔙 Назад к тарифам",  callback_data="back_to_plans")],
     ])
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ХЕНДЛЕРЫ ПОДПИСОК
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(F.text == "💎 Подписка")
 async def sub_menu(message: Message):
     u     = db_get_user(message.from_user.id)
@@ -595,7 +1027,6 @@ async def sub_menu(message: Message):
         bar = days_bar(days_used, 7)
         days_left_str = f"\n  Осталось:    <code>[{bar}]</code> <b>{max(days_left, 0)} дн.</b>"
 
-    # Блок «продление» для платных тарифов
     renew_block = ""
     if u['sub_type'] != 'free':
         renew_block = (
@@ -659,8 +1090,7 @@ async def process_buy(callback: CallbackQuery):
     u        = db_get_user(callback.from_user.id)
     res      = await create_invoice(plan['price'], plan['name'])
 
-    # Определяем текст кнопки (продление или покупка)
-    is_renew = u['sub_type'] == plan_key
+    is_renew    = u['sub_type'] == plan_key
     action_word = "ПРОДЛЕНИЕ" if is_renew else "ПОКУПКА"
 
     if res['ok']:
@@ -701,7 +1131,6 @@ async def process_check(callback: CallbackQuery):
 
     if is_paid:
         u = db_get_user(callback.from_user.id)
-        # Продление: если та же подписка и ещё не истекла — добавляем 7 дней
         if u['sub_type'] == plan_key and u['sub_expires'] and u['sub_expires'] > datetime.now():
             expiry = u['sub_expires'] + timedelta(days=7)
         else:
@@ -735,9 +1164,9 @@ async def process_check(callback: CallbackQuery):
     else:
         await callback.answer("❌ Оплата ещё не поступила. Подождите и проверьте снова.", show_alert=True)
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              КОМАНДЫ И ОСНОВНЫЕ ХЕНДЛЕРЫ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(CommandStart())
 async def start(message: Message):
     db_update_user(message.from_user.id, username=message.from_user.username)
@@ -756,6 +1185,8 @@ async def start(message: Message):
         "▸ Анализ реальных котировок в реальном времени\n"
         "▸ RSI-индикатор + свечной анализ\n"
         "▸ Определение тренда и волатильности\n"
+        "▸ Новостной фильтр (Investing.com, 3 быка)\n"
+        "▸ Бесплатные VIP-автосигналы (до 3/день)\n"
         "▸ Сигнал с процентом уверенности ИИ\n\n"
         f"👥 Уже торгуют с нами: <b>{total_users + 118:,}</b> трейдеров\n"
         f"📡 WinRate системы: <b>88–94%</b>\n\n"
@@ -774,7 +1205,8 @@ async def about_bot(message: Message):
         "🤖 <b>AI TRADING TERMINAL — FX PRO v2.0</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         "📡 <b>Источник данных:</b> Twelve Data (live)\n"
-        "🧠 <b>Алгоритм:</b> RSI + свечной анализ + тренд\n"
+        "📰 <b>Новости:</b> Investing.com (3 быка, обновление каждый час)\n"
+        "🧠 <b>Алгоритм:</b> RSI + свечной анализ + тренд + новостной фильтр\n"
         "📊 <b>Платформа:</b> Pocket Option\n"
         "💱 <b>Пары:</b> 6 валютных инструментов\n"
         "⏱ <b>Таймфреймы:</b> 1, 3, 5, 10 минут\n\n"
@@ -810,6 +1242,142 @@ async def about_bot(message: Message):
     )
     await message.answer(text, parse_mode="HTML")
 
+# ════════════════════════════════════════════════
+#         📰 НОВОСТИ РЫНКА (хендлер)
+# ════════════════════════════════════════════════
+@dp.message(F.text == "📰 Новости рынка")
+async def news_market(message: Message):
+    news = db_get_today_news()
+    today_str = (datetime.utcnow() + timedelta(hours=3)).strftime("%d.%m.%Y")
+    now_msk   = datetime.utcnow() + timedelta(hours=3)
+
+    if not news:
+        await message.answer(
+            "📰 <b>ЭКОНОМИЧЕСКИЙ КАЛЕНДАРЬ</b>\n"
+            "━━━━━━━━━━━━━━━━━\n\n"
+            f"📅 <b>{today_str}</b>\n\n"
+            "⚠️ <i>Данные ещё загружаются или важных событий на сегодня нет.\n"
+            "Блокнот обновляется каждый час автоматически.</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    lines = []
+    for ev in news:
+        ev_dt = ev.get("event_time_dt")
+        if isinstance(ev_dt, str):
+            try:
+                ev_dt = datetime.strptime(ev_dt, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                ev_dt = None
+
+        status = ""
+        if ev_dt:
+            delta = (ev_dt - now_msk).total_seconds() / 60
+            if delta < -30:
+                status = " ✅ прошло"
+            elif -30 <= delta <= 0:
+                status = " 🔴 СЕЙЧАС"
+            elif 0 < delta <= 30:
+                status = f" ⚠️ через {int(delta)} мин"
+            else:
+                status = ""
+
+        lines.append(
+            f"🔴🔴🔴 <b>{ev['event_time']} МСК</b> — {ev['title']} "
+            f"(<b>{ev['currency']}</b>){status}"
+        )
+
+    news_text = "\n".join(lines)
+    await message.answer(
+        f"📰 <b>ЭКОНОМИЧЕСКИЙ КАЛЕНДАРЬ</b>\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📅 <b>{today_str}</b> | Только события 🔴🔴🔴 (3 быка)\n\n"
+        f"{news_text}\n\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ <i>За 30 мин до и после события рекомендуется не торговать.\n"
+        f"Терминал автоматически блокирует сигналы в опасное время.</i>",
+        parse_mode="HTML"
+    )
+
+# ════════════════════════════════════════════════
+#         🧮 КАЛЬКУЛЯТОР ЛОТА
+# ════════════════════════════════════════════════
+@dp.message(F.text == "🧮 Калькулятор лота")
+async def lot_calculator(message: Message):
+    pending_lot_calc.add(message.from_user.id)
+    await message.answer(
+        "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
+        "━━━━━━━━━━━━━━━━━\n\n"
+        "Введите ваш <b>текущий баланс в долларах</b> (только цифры):\n\n"
+        "<i>Пример: 100 или 500 или 1250</i>",
+        reply_markup=back_kb,
+        parse_mode="HTML"
+    )
+
+@dp.message(lambda msg: msg.from_user.id in pending_lot_calc)
+async def process_lot_calc(message: Message):
+    if message.text == "⬅️ Назад":
+        pending_lot_calc.discard(message.from_user.id)
+        u = db_get_user(message.from_user.id)
+        return await message.answer(
+            "🏠 <b>Главная панель</b>",
+            reply_markup=get_main_menu(u["has_access"]),
+            parse_mode="HTML"
+        )
+
+    text = (message.text or "").replace(",", ".").replace(" ", "")
+    try:
+        balance = float(text)
+        if balance <= 0:
+            raise ValueError
+    except ValueError:
+        return await message.answer(
+            "❌ Введите корректную сумму (только цифры, больше нуля).\n"
+            "<i>Пример: 100</i>",
+            parse_mode="HTML"
+        )
+
+    pending_lot_calc.discard(message.from_user.id)
+    u = db_get_user(message.from_user.id)
+    lot = calc_lot(balance)
+
+    bar_conservative = confidence_bar(10)
+    bar_moderate     = confidence_bar(20)
+    bar_aggressive   = confidence_bar(30)
+    bar_max          = confidence_bar(50)
+
+    await message.answer(
+        f"🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
+        f"━━━━━━━━━━━━━━━━━\n\n"
+        f"  💰 Ваш баланс: <b>{balance:,.2f}$</b>\n\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>РЕКОМЕНДУЕМЫЕ РАЗМЕРЫ СДЕЛОК:</b>\n\n"
+        f"🟢 <b>Консервативно (1%):</b>\n"
+        f"  <code>{bar_conservative}</code>\n"
+        f"  Сумма: <b>{lot['conservative']:,.2f}$</b> — минимальный риск\n\n"
+        f"🔵 <b>Умеренно (2%):</b>\n"
+        f"  <code>{bar_moderate}</code>\n"
+        f"  Сумма: <b>{lot['moderate']:,.2f}$</b> — оптимально ✅\n\n"
+        f"🟡 <b>Агрессивно (3%):</b>\n"
+        f"  <code>{bar_aggressive}</code>\n"
+        f"  Сумма: <b>{lot['aggressive']:,.2f}$</b> — повышенный риск\n\n"
+        f"🔴 <b>Максимум (5%) — красная зона:</b>\n"
+        f"  <code>{bar_max}</code>\n"
+        f"  Сумма: <b>{lot['max_risk']:,.2f}$</b> — только опытным!\n\n"
+        f"━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>Рекомендация терминала:</b>\n"
+        f"  Оптимальная сделка: <b>{lot['moderate']:,.2f}$ — {lot['aggressive']:,.2f}$</b>\n"
+        f"  (2–3% от баланса)\n\n"
+        f"<i>Грамотный мани-менеджмент — залог долгой карьеры трейдера.\n"
+        f"Никогда не ставьте более 5% от депозита в одну сделку!</i>",
+        reply_markup=get_main_menu(u["has_access"]),
+        parse_mode="HTML"
+    )
+
+# ════════════════════════════════════════════════
+#              АКТИВАЦИЯ ДОСТУПА
+# ════════════════════════════════════════════════
 @dp.message(Command("vip"))
 @dp.message(F.text == "🔐 Активировать доступ")
 async def activate(message: Message):
@@ -880,6 +1448,7 @@ async def ask_id(message: Message):
 async def go_back(message: Message):
     pending_users.discard(message.from_user.id)
     pending_support.discard(message.from_user.id)
+    pending_lot_calc.discard(message.from_user.id)
     u = db_get_user(message.from_user.id)
     await message.answer(
         f"🏠 <b>Главная панель управления</b>\n"
@@ -954,9 +1523,9 @@ async def process_id(message: Message):
         parse_mode="HTML"
     )
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              АДМИНСКИЕ КОМАНДЫ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(F.text.startswith("/give"))
 async def admin_give(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -971,7 +1540,8 @@ async def admin_give(message: Message):
             "✅ Ваш аккаунт верифицирован.\n"
             "Все модули терминала разблокированы.\n\n"
             "📊 Нажмите <b>«📊 Торговая панель»</b> для выбора актива\n"
-            "⚡ Или сразу <b>«⚡ Получить сигнал»</b>\n\n"
+            "⚡ Или сразу <b>«⚡ Получить сигнал»</b>\n"
+            "🔔 Вы будете получать бесплатные VIP-автосигналы (до 3/день)\n\n"
             "<i>Желаем профитных сделок! 📈</i>",
             parse_mode="HTML",
             reply_markup=get_main_menu(True)
@@ -1028,11 +1598,13 @@ async def admin_stats(message: Message):
         return
     total  = db_get_total_users()
     active = db_get_active_users()
+    news   = db_get_today_news()
     await message.answer(
         f"📊 <b>СТАТИСТИКА БОТА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n"
         f"👥 Всего пользователей: <b>{total}</b>\n"
         f"🟢 Активных (24ч): <b>{active}</b>\n"
+        f"📰 Новостей в блокноте (сегодня): <b>{len(news)}</b>\n"
         f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
         parse_mode="HTML"
     )
@@ -1078,15 +1650,14 @@ async def admin_broadcast(message: Message):
     except Exception as e:
         await message.answer(f"⚠️ Формат: <code>/broadcast текст</code>\n{e}", parse_mode="HTML")
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ТОРГОВАЯ ПАНЕЛЬ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(F.text == "📊 Торговая панель")
 async def t_panel(message: Message):
     if not db_get_user(message.from_user.id)["has_access"]:
         return
 
-    # Проверка выходного дня
     if not is_market_open():
         return await message.answer(get_market_closed_text(), parse_mode="HTML")
 
@@ -1107,7 +1678,6 @@ async def set_pair(message: Message):
 
     user_temp_data[message.from_user.id] = {"pair": message.text}
 
-    # Показываем лучшее время для выбранной пары
     best = PAIR_BEST_TIME.get(message.text, {})
     best_time_block = ""
     if best:
@@ -1136,7 +1706,6 @@ async def set_time(message: Message):
     user_temp_data[uid]["time"] = message.text
     pair = user_temp_data[uid].get('pair', '—')
 
-    # Лучшее время для выбранной пары
     best = PAIR_BEST_TIME.get(pair, {})
     best_time_str = f"  ⏰ Лучшее окно: <b>{best['window']}</b>\n" if best else ""
 
@@ -1152,9 +1721,9 @@ async def set_time(message: Message):
         parse_mode="HTML"
     )
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ГЛАВНЫЙ ХЕНДЛЕР СИГНАЛА
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(Command("signals"))
 @dp.message(F.text == "⚡ Получить сигнал")
 async def get_signal(message: Message):
@@ -1163,7 +1732,6 @@ async def get_signal(message: Message):
     if not u["has_access"]:
         return
 
-    # ── Проверка выходного дня ──────────────────────────
     if not is_market_open():
         return await message.answer(get_market_closed_text(), parse_mode="HTML")
 
@@ -1177,7 +1745,6 @@ async def get_signal(message: Message):
     sub_type      = u['sub_type']
     current_limit = SUBSCRIPTION_PLANS[sub_type]['limit']
 
-    # ── Лимит исчерпан ──────────────────────────────────
     if daily >= current_limit:
         if sub_type == "free":
             return await message.answer(
@@ -1225,6 +1792,47 @@ async def get_signal(message: Message):
         )
     last_click_time[uid] = time.time()
 
+    # ── Проверяем новостной фильтр ──────────────────────
+    danger = check_news_danger_for_pair(data["pair"])
+    if danger["dangerous"]:
+        delta   = danger["minutes"]
+        event   = danger["event"]
+        curr    = danger["currency"]
+        t_str   = danger["time"]
+        desc    = danger["desc"]
+
+        if delta >= 0:
+            warning_head = f"⚠️ Важная новость <b>{desc}</b> ({t_str} МСК)"
+            warning_body = (
+                f"По валюте <b>{curr}</b> выходят данные:\n"
+                f"📌 <b>{event}</b>\n\n"
+                f"Рынок непредсказуем в такие моменты — индикаторы могут ошибаться.\n\n"
+                f"🕐 <b>Рекомендуем подождать ~20–30 минут</b> после публикации,\n"
+                f"пока волатильность не успокоится и не сформируется чёткий тренд."
+            )
+        else:
+            warning_head = f"⚠️ Важная новость вышла {desc} ({t_str} МСК)"
+            warning_body = (
+                f"По валюте <b>{curr}</b> только что вышли данные:\n"
+                f"📌 <b>{event}</b>\n\n"
+                f"Рынок ещё не переварил новость — высокая волатильность.\n\n"
+                f"🕐 <b>Рекомендуем подождать ещё ~{20 + int(abs(delta))} мин</b>,\n"
+                f"пока ситуация стабилизируется."
+            )
+
+        return await message.answer(
+            f"🚨 <b>НОВОСТНОЙ ФИЛЬТР СРАБОТАЛ</b>\n"
+            f"━━━━━━━━━━━━━━━━━\n\n"
+            f"  📊 Пара:  <b>{data['pair']}</b>\n"
+            f"  {warning_head}\n\n"
+            f"{warning_body}\n\n"
+            f"━━━━━━━━━━━━━━━━━\n"
+            f"<i>Терминал заботится о вашем депозите. "
+            f"Дождитесь спокойного рынка и нажмите «⚡ Получить сигнал» снова.</i>",
+            reply_markup=signal_kb,
+            parse_mode="HTML"
+        )
+
     # ── Анимированный прогресс-бар ──────────────────────
     progress_frames = [
         ("⬛️⬛️⬛️⬛️⬛️ <b>[ 0%]</b>",  "📡 Подключение к потоку котировок..."),
@@ -1261,7 +1869,6 @@ async def get_signal(message: Message):
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     new_daily = daily + 1
 
-    # ── Оставшиеся сигналы — предупреждение ─────────────
     remaining = current_limit - new_daily
     limit_warning = ""
     if remaining == 0:
@@ -1269,11 +1876,9 @@ async def get_signal(message: Message):
     elif remaining <= 2:
         limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
 
-    # ── Блок лучшего времени для пары ───────────────────
     best = PAIR_BEST_TIME.get(data["pair"], {})
     best_time_block = ""
     if best:
-        now_msk = datetime.utcnow() + timedelta(hours=3)
         best_time_block = (
             f"\n━━━━━━━━━━━━━━━━━\n"
             f"⏰ <b>ОПТИМАЛЬНОЕ ВРЕМЯ:</b>\n"
@@ -1281,9 +1886,8 @@ async def get_signal(message: Message):
             f"  <i>{best['note']}</i>\n"
         )
 
-    # ── Формируем сигнал ────────────────────────────────
     if quote:
-        direction, confidence = generate_signal_from_quote(quote)
+        direction, confidence, reason = generate_signal_from_quote(quote)
 
         price_val = quote["price"]
         price_str = f"{price_val:.3f}" if price_val > 100 else f"{price_val:.5f}"
@@ -1301,10 +1905,16 @@ async def get_signal(message: Message):
 
         rsi_bar  = format_rsi_bar(quote.get("rsi_value", 50))
         conf_bar = confidence_bar(confidence)
-
         dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in direction else "🔴 PUT (ВНИЗ)"
 
-        # PRO-специфичный блок
+        # ── Блок «Почему вошли?» ─────────────────────────
+        reason_block = (
+            f"\n━━━━━━━━━━━━━━━━━\n"
+            f"💡 <b>ПОЧЕМУ ВОШЛИ?</b>\n"
+            f"  <i>{reason.capitalize()}</i>\n"
+        )
+
+        # PRO-блок
         pro_block = ""
         if sub_type == "pro":
             rsi_v = quote.get("rsi_value", 50)
@@ -1349,6 +1959,7 @@ async def get_signal(message: Message):
             f"  ┌──────────────────┐\n"
             f"  │   {dir_badge}   │\n"
             f"  └──────────────────┘\n"
+            f"{reason_block}"
             f"{best_time_block}"
             f"{pro_block}"
             f"━━━━━━━━━━━━━━━━━\n"
@@ -1360,6 +1971,7 @@ async def get_signal(message: Message):
         direction  = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
         confidence = random.randint(83, 91)
         conf_bar   = confidence_bar(confidence)
+        reason     = "технический анализ на основе исторических паттернов"
         res = (
             f"⚡️ <b>ТОРГОВЫЙ СИГНАЛ СФОРМИРОВАН</b> ⚡️\n"
             f"━━━━━━━━━━━━━━━━━\n"
@@ -1367,7 +1979,9 @@ async def get_signal(message: Message):
             f"  ⏱ Экспирация:  <b>{data['time']}</b>\n\n"
             f"🧠 <b>УВЕРЕННОСТЬ ИИ:</b>\n"
             f"  <code>{conf_bar}</code> <b>{confidence}%</b>\n\n"
-            f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n"
+            f"🚀 <b>РЕКОМЕНДАЦИЯ: {direction}</b>\n\n"
+            f"💡 <b>ПОЧЕМУ ВОШЛИ?</b>\n"
+            f"  <i>{reason}</i>\n"
             f"{best_time_block}"
             f"━━━━━━━━━━━━━━━━━\n"
             f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
@@ -1383,9 +1997,9 @@ async def get_signal(message: Message):
 
     await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ПРОФИЛЬ
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 @dp.message(Command("profile"))
 @dp.message(F.text == "👤 Профиль")
 async def profile(message: Message):
@@ -1415,6 +2029,11 @@ async def profile(message: Message):
     market_str = "🟢 Открыт (ПН–ПТ)" if is_market_open() else "🔴 Закрыт (выходной)"
     name = message.from_user.first_name or "Трейдер"
 
+    # Кнопка калькулятора лота прямо в профиле
+    profile_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧮 Рассчитать лот", callback_data="open_lot_calc")],
+    ])
+
     await message.answer(
         f"👤 <b>ПРОФИЛЬ ТРЕЙДЕРА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n\n"
@@ -1436,13 +2055,28 @@ async def profile(message: Message):
         f"  <code>[{daily_bar}]</code> <b>{u['daily_count']} / {sub_limit}</b>\n\n"
         f"━━━━━━━━━━━━━━━━━\n"
         f"🌐 Рынок сейчас: {market_str}\n"
-        f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>ОГРАНИЧЕНА ❌</b>'}",
+        f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>ОГРАНИЧЕНА ❌</b>'}\n\n"
+        f"🧮 <i>Используйте калькулятор лота для правильного мани-менеджмента:</i>",
+        reply_markup=profile_kb,
         parse_mode="HTML"
     )
 
-# ═══════════════════════════════════════════════
-#              СТАТИСТИКА
-# ═══════════════════════════════════════════════
+@dp.callback_query(F.data == "open_lot_calc")
+async def open_lot_calc_callback(callback: CallbackQuery):
+    pending_lot_calc.add(callback.from_user.id)
+    await callback.message.answer(
+        "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
+        "━━━━━━━━━━━━━━━━━\n\n"
+        "Введите ваш <b>текущий баланс в долларах</b> (только цифры):\n\n"
+        "<i>Пример: 100 или 500 или 1250</i>",
+        reply_markup=back_kb,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+# ════════════════════════════════════════════════
+#              СТАТИСТИКА (обновлённая)
+# ════════════════════════════════════════════════
 @dp.message(F.text == "📈 Статистика")
 async def stats(message: Message):
     seed_val = int(datetime.now().strftime("%Y%m%d"))
@@ -1466,6 +2100,44 @@ async def stats(message: Message):
     if not is_market_open():
         market_note = "\n⚠️ <i>Рынок сейчас закрыт (выходной). Статистика за последний рабочий день.</i>\n"
 
+    # ── Сила пар (live) ─────────────────────────────────
+    pairs_strength_text = ""
+    if is_market_open():
+        try:
+            strength_msg = await message.answer(
+                "⏳ <i>Загружаю силу валютных пар...</i>",
+                parse_mode="HTML"
+            )
+            pairs_data = await get_pairs_strength()
+            try:
+                await strength_msg.delete()
+            except:
+                pass
+
+            if pairs_data:
+                strongest = pairs_data[0]
+                weakest   = pairs_data[-1]
+
+                lines = []
+                for i, pd in enumerate(pairs_data):
+                    medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"][i] if i < 6 else f"{i+1}."
+                    sign  = "+" if pd["change_pct"] >= 0 else ""
+                    lines.append(
+                        f"  {medal} <b>{pd['pair']}</b> {pd['trend']}  "
+                        f"<code>{sign}{pd['change_pct']:.3f}%</code>"
+                    )
+
+                pairs_table = "\n".join(lines)
+                pairs_strength_text = (
+                    f"\n━━━━━━━━━━━━━━━━━\n"
+                    f"💱 <b>СИЛА ВАЛЮТНЫХ ПАР (live):</b>\n\n"
+                    f"{pairs_table}\n\n"
+                    f"  🔝 Самая сильная: <b>{strongest['pair']}</b> ({strongest['trend']})\n"
+                    f"  📉 Самая слабая:  <b>{weakest['pair']}</b> ({weakest['trend']})\n"
+                )
+        except Exception as e:
+            print(f"Ошибка загрузки силы пар: {e}")
+
     await message.answer(
         f"📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ТЕРМИНАЛА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n"
@@ -1481,7 +2153,8 @@ async def stats(message: Message):
         f"⚡ <b>ПОКАЗАТЕЛИ СИСТЕМЫ:</b>\n\n"
         f"  Средний ROI:          <b>{avg_profit}%</b>\n"
         f"  Лучшая пара дня:      <b>{best_pair}</b>\n"
-        f"  Пик активности:       <b>{peak_hour}:00–{peak_hour+1}:00</b>\n\n"
+        f"  Пик активности:       <b>{peak_hour}:00–{peak_hour+1}:00</b>\n"
+        f"{pairs_strength_text}"
         f"━━━━━━━━━━━━━━━━━\n"
         f"👥 <b>СООБЩЕСТВО:</b>\n\n"
         f"  Всего трейдеров:      <b>{total_users + 118:,}</b>\n"
@@ -1493,14 +2166,19 @@ async def stats(message: Message):
     )
     random.seed()
 
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              ЗАПУСК
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 async def main():
     print("=" * 50)
     print("  🚀 AI TRADING TERMINAL — FX PRO v2.0")
     print("  ✅ BOT STARTED SUCCESSFULLY")
     print("=" * 50)
+
+    # Запускаем фоновые задачи
+    asyncio.create_task(news_scheduler())
+    asyncio.create_task(auto_signals_scheduler())
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
