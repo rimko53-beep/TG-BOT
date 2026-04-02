@@ -61,6 +61,17 @@ PAIR_CURRENCIES = {
     "💵 EUR/CHF": ["EUR", "CHF"],
 }
 
+# Маппинг валюты → пары, которые она затрагивает
+CURRENCY_TO_PAIRS = {
+    "USD": ["💵 EUR/USD", "💵 GBP/USD", "💵 USD/JPY", "💵 USD/CAD"],
+    "EUR": ["💵 EUR/USD", "💵 EUR/CHF"],
+    "GBP": ["💵 GBP/USD"],
+    "JPY": ["💵 USD/JPY"],
+    "CAD": ["💵 USD/CAD", "💵 AUD/CAD"],
+    "AUD": ["💵 AUD/CAD"],
+    "CHF": ["💵 EUR/CHF"],
+}
+
 # ═══════════════════════════════════════════════
 #         ЛУЧШЕЕ ВРЕМЯ ТОРГОВЛИ ПО ПАРЕ
 # ═══════════════════════════════════════════════
@@ -1594,7 +1605,7 @@ async def about_bot(message: Message):
     await message.answer(text, parse_mode="HTML")
 
 # ════════════════════════════════════════════════
-#         📰 НОВОСТИ РЫНКА (хендлер)
+#         📰 НОВОСТИ РЫНКА (хендлер) — ОБНОВЛЁННЫЙ
 # ════════════════════════════════════════════════
 @dp.message(F.text == "📰 Новости рынка")
 async def news_market(message: Message):
@@ -1613,7 +1624,9 @@ async def news_market(message: Message):
         )
         return
 
-    lines = []
+    passed_lines  = []
+    upcoming_lines = []
+
     for ev in news:
         ev_dt = ev.get("event_time_dt")
         if isinstance(ev_dt, str):
@@ -1622,31 +1635,98 @@ async def news_market(message: Message):
             except Exception:
                 ev_dt = None
 
-        status = ""
-        if ev_dt:
-            delta = (ev_dt - now_msk).total_seconds() / 60
-            if delta < -30:
-                status = " ✅ прошло"
-            elif -30 <= delta <= 0:
-                status = " 🔴 СЕЙЧАС"
-            elif 0 < delta <= 30:
-                status = f" ⚠️ через {int(delta)} мин"
-            else:
-                status = ""
+        # Определяем затронутые пары для этой валюты
+        affected_pairs = CURRENCY_TO_PAIRS.get(ev["currency"], [])
+        pairs_short = [p.replace("💵 ", "") for p in affected_pairs]
+        pairs_str = ", ".join(pairs_short) if pairs_short else "—"
 
-        lines.append(
-            f"🔴🔴🔴 <b>{ev['event_time']} МСК</b> — {ev['title']} "
-            f"(<b>{ev['currency']}</b>){status}"
+        if ev_dt:
+            delta_min = (ev_dt - now_msk).total_seconds() / 60
+
+            if delta_min < -30:
+                # Новость уже давно вышла — помечаем галочкой
+                line = (
+                    f"✅ <b>{ev['event_time']} МСК</b> — {ev['title']}\n"
+                    f"   💱 <b>{ev['currency']}</b> | Влияет на: <i>{pairs_str}</i>"
+                )
+                passed_lines.append((ev_dt, line))
+
+            elif -30 <= delta_min <= 0:
+                # Новость только что вышла (в окне ±30 мин) — активная зона
+                line = (
+                    f"🔴 <b>{ev['event_time']} МСК — СЕЙЧАС!</b> — {ev['title']}\n"
+                    f"   💱 <b>{ev['currency']}</b> | Влияет на: <i>{pairs_str}</i>\n"
+                    f"   ⛔ <i>Не торгуйте этими парами прямо сейчас!</i>"
+                )
+                upcoming_lines.append((ev_dt, line))
+
+            elif 0 < delta_min <= 30:
+                # Новость скоро выйдет — предупреждение
+                mins = int(delta_min)
+                line = (
+                    f"⚠️ <b>{ev['event_time']} МСК — через {mins} мин!</b> — {ev['title']}\n"
+                    f"   💱 <b>{ev['currency']}</b> | Влияет на: <i>{pairs_str}</i>\n"
+                    f"   ⛔ <i>Воздержитесь от входа в эти пары!</i>"
+                )
+                upcoming_lines.append((ev_dt, line))
+
+            else:
+                # Предстоящая новость — обычный вид
+                line = (
+                    f"⏳ <b>{ev['event_time']} МСК</b> — {ev['title']}\n"
+                    f"   💱 <b>{ev['currency']}</b> | Влияет на: <i>{pairs_str}</i>"
+                )
+                upcoming_lines.append((ev_dt, line))
+        else:
+            # Нет времени — показываем как предстоящее
+            line = (
+                f"⏳ <b>{ev['event_time']} МСК</b> — {ev['title']}\n"
+                f"   💱 <b>{ev['currency']}</b> | Влияет на: <i>{pairs_str}</i>"
+            )
+            upcoming_lines.append((None, line))
+
+    # Сортируем по времени
+    passed_lines.sort(key=lambda x: x[0])
+    upcoming_lines.sort(key=lambda x: (x[0] is None, x[0]))
+
+    # Собираем итоговый текст
+    sections = []
+
+    if upcoming_lines:
+        upcoming_text = "\n\n".join(line for _, line in upcoming_lines)
+        sections.append(
+            f"📌 <b>ПРЕДСТОЯЩИЕ И АКТИВНЫЕ СОБЫТИЯ:</b>\n\n"
+            f"{upcoming_text}"
         )
 
-    news_text = "\n".join(lines)
+    if passed_lines:
+        passed_text = "\n\n".join(line for _, line in passed_lines)
+        sections.append(
+            f"📋 <b>УЖЕ ВЫШЕДШИЕ СОБЫТИЯ:</b>\n\n"
+            f"{passed_text}"
+        )
+
+    body = "\n\n━━━━━━━━━━━━━━━━━\n\n".join(sections) if sections else "<i>Нет событий для отображения.</i>"
+
+    # Считаем сколько предстоит и сколько уже вышло
+    cnt_upcoming = len(upcoming_lines)
+    cnt_passed   = len(passed_lines)
+
+    summary = f"📊 Предстоит: <b>{cnt_upcoming}</b> | Вышло: <b>{cnt_passed}</b>"
+
     await message.answer(
         f"📰 <b>ЭКОНОМИЧЕСКИЙ КАЛЕНДАРЬ</b>\n"
         f"━━━━━━━━━━━━━━━━━\n"
-        f"📅 <b>{today_str}</b> | Только события 🔴🔴🔴 (3 быка)\n\n"
-        f"{news_text}\n\n"
+        f"📅 <b>{today_str}</b> | Только события 🔴🔴🔴 (3 быка)\n"
+        f"{summary}\n\n"
+        f"━━━━━━━━━━━━━━━━━\n\n"
+        f"{body}\n\n"
         f"━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ <i>За 30 мин до и после события рекомендуется не торговать.\n"
+        f"<b>ОБОЗНАЧЕНИЯ:</b>\n"
+        f"⏳ — предстоит  |  ✅ — уже вышло\n"
+        f"⚠️ — выходит скоро  |  🔴 — выходит прямо сейчас\n\n"
+        f"⚠️ <i>За 30 мин до и после события рекомендуется не торговать\n"
+        f"парами, на которые влияет эта валюта.\n"
         f"Терминал автоматически блокирует сигналы в опасное время.</i>",
         parse_mode="HTML"
     )
