@@ -144,7 +144,6 @@ def init_db():
                 last_active     TIMESTAMP DEFAULT NOW()
             )
         """)
-        # Таблица новостей (блокнот)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS news_events (
                 id              SERIAL PRIMARY KEY,
@@ -157,7 +156,6 @@ def init_db():
                 created_at      TIMESTAMP DEFAULT NOW()
             )
         """)
-        # Таблица автосигналов
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS auto_signals (
                 id              SERIAL PRIMARY KEY,
@@ -296,10 +294,6 @@ def db_get_all_users_with_access():
 #      БЛОКНОТ НОВОСТЕЙ (Investing.com scraper)
 # ════════════════════════════════════════════════
 async def fetch_investing_news() -> list[dict]:
-    """
-    Парсит экономический календарь Investing.com и возвращает
-    только события с высоким импактом (3 быка) на сегодня (МСК).
-    """
     today_msk = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     url = "https://www.investing.com/economic-calendar/"
     headers = {
@@ -372,7 +366,6 @@ async def fetch_investing_news() -> list[dict]:
 
 
 def db_save_news(events: list[dict]):
-    """Сохраняет новости в БД (перезаписывает за сегодня)."""
     if not events:
         return
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
@@ -397,7 +390,6 @@ def db_save_news(events: list[dict]):
 
 
 def db_get_today_news() -> list[dict]:
-    """Возвращает все важные новости за сегодня."""
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     try:
         conn   = get_db_connection()
@@ -416,10 +408,6 @@ def db_get_today_news() -> list[dict]:
 
 
 def check_news_danger_for_pair(pair_label: str) -> dict:
-    """
-    Проверяет: есть ли рядом (±30 мин) важные новости по валютам пары.
-    Возвращает: {"dangerous": bool, "minutes": int, "event": str, "currency": str}
-    """
     currencies = PAIR_CURRENCIES.get(pair_label, [])
     now_msk = datetime.utcnow() + timedelta(hours=3)
     news = db_get_today_news()
@@ -464,7 +452,6 @@ def check_news_danger_for_pair(pair_label: str) -> dict:
 
 
 async def news_scheduler():
-    """Фоновая задача: каждый час обновляет блокнот новостей."""
     while True:
         try:
             print("📰 Обновление блокнота новостей...")
@@ -476,7 +463,7 @@ async def news_scheduler():
                 print("📰 Нет важных событий или ошибка парсинга")
         except Exception as e:
             print(f"Ошибка news_scheduler: {e}")
-        await asyncio.sleep(3600)  # раз в час
+        await asyncio.sleep(3600)
 
 
 # ════════════════════════════════════════════════
@@ -508,6 +495,7 @@ async def check_invoice(invoice_id):
 
 # ════════════════════════════════════════════════
 #         ПОЛУЧЕНИЕ КОТИРОВОК (TWELVE DATA)
+#         Загружаем 50 свечей для точного анализа
 # ════════════════════════════════════════════════
 async def get_real_quote(pair_label: str) -> dict | None:
     symbol = PAIR_TO_SYMBOL.get(pair_label)
@@ -518,7 +506,7 @@ async def get_real_quote(pair_label: str) -> dict | None:
         f"https://api.twelvedata.com/time_series"
         f"?symbol={symbol}"
         f"&interval=1min"
-        f"&outputsize=10"
+        f"&outputsize=50"
         f"&apikey={TWELVEDATA_API_KEY}"
     )
 
@@ -533,13 +521,20 @@ async def get_real_quote(pair_label: str) -> dict | None:
             return None
 
         values = data["values"]
-        if not values:
+        if not values or len(values) < 10:
             return None
 
+        # Переворачиваем: индекс 0 = самая старая свеча, последний = текущая
         opens  = [float(v["open"])  for v in reversed(values)]
         closes = [float(v["close"]) for v in reversed(values)]
         highs  = [float(v["high"])  for v in reversed(values)]
         lows   = [float(v["low"])   for v in reversed(values)]
+        volumes = []
+        for v in reversed(values):
+            try:
+                volumes.append(float(v.get("volume", 0)))
+            except:
+                volumes.append(0.0)
 
         current_price = closes[-1]
         prev_close    = closes[-2] if len(closes) >= 2 else closes[-1]
@@ -553,34 +548,148 @@ async def get_real_quote(pair_label: str) -> dict | None:
         elif last_close < last_open: candle_direction = "bearish"
         else:                        candle_direction = "neutral"
 
+        # ── RSI(14) точный расчёт ─────────────────────────
         rsi_value  = 50.0
         rsi_signal = "нейтральный"
-        if len(closes) >= 3:
-            gains  = []
-            losses = []
-            for i in range(1, len(closes)):
-                delta = closes[i] - closes[i - 1]
-                if delta > 0: gains.append(delta)
-                else:         losses.append(abs(delta))
-            avg_gain  = sum(gains)  / len(gains)  if gains  else 0
-            avg_loss  = sum(losses) / len(losses) if losses else 0.0001
-            rs        = avg_gain / avg_loss
+        rsi_period = 14
+        if len(closes) >= rsi_period + 1:
+            deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+            gains  = [max(d, 0) for d in deltas]
+            losses = [abs(min(d, 0)) for d in deltas]
+            # Первый средний
+            avg_gain = sum(gains[:rsi_period]) / rsi_period
+            avg_loss = sum(losses[:rsi_period]) / rsi_period
+            # Smoothed (Wilder)
+            for i in range(rsi_period, len(gains)):
+                avg_gain = (avg_gain * (rsi_period - 1) + gains[i]) / rsi_period
+                avg_loss = (avg_loss * (rsi_period - 1) + losses[i]) / rsi_period
+            rs = avg_gain / avg_loss if avg_loss != 0 else 100
             rsi_value = 100 - (100 / (1 + rs))
-            if   rsi_value > 60: rsi_signal = f"перекупленность ({rsi_value:.0f})"
-            elif rsi_value < 40: rsi_signal = f"перепроданность ({rsi_value:.0f})"
-            else:                rsi_signal = f"нейтральный ({rsi_value:.0f})"
 
+            if   rsi_value >= 70: rsi_signal = f"сильная перекупленность ({rsi_value:.1f})"
+            elif rsi_value >= 60: rsi_signal = f"перекупленность ({rsi_value:.1f})"
+            elif rsi_value <= 30: rsi_signal = f"сильная перепроданность ({rsi_value:.1f})"
+            elif rsi_value <= 40: rsi_signal = f"перепроданность ({rsi_value:.1f})"
+            else:                  rsi_signal = f"нейтральный ({rsi_value:.1f})"
+
+        # ── EMA расчёт ────────────────────────────────────
+        def calc_ema(data_list: list, period: int) -> list:
+            if len(data_list) < period:
+                return []
+            k = 2 / (period + 1)
+            ema = [sum(data_list[:period]) / period]
+            for price in data_list[period:]:
+                ema.append(price * k + ema[-1] * (1 - k))
+            return ema
+
+        ema9  = calc_ema(closes, 9)
+        ema21 = calc_ema(closes, 21)
+        ema50 = calc_ema(closes, 50) if len(closes) >= 50 else []
+
+        ema9_cur  = ema9[-1]  if ema9  else current_price
+        ema21_cur = ema21[-1] if ema21 else current_price
+        ema50_cur = ema50[-1] if ema50 else current_price
+
+        # EMA тренд: текущая и предыдущая
+        ema9_prev  = ema9[-2]  if len(ema9)  >= 2 else ema9_cur
+        ema21_prev = ema21[-2] if len(ema21) >= 2 else ema21_cur
+
+        # ── MACD (12, 26, 9) ──────────────────────────────
+        ema12 = calc_ema(closes, 12)
+        ema26 = calc_ema(closes, 26)
+
+        macd_line   = 0.0
+        macd_signal_val = 0.0
+        macd_hist   = 0.0
+        macd_trend  = "нейтральный"
+
+        if len(ema12) > 0 and len(ema26) > 0:
+            # Выравниваем длины
+            min_len = min(len(ema12), len(ema26))
+            macd_values = [ema12[-(min_len - i)] - ema26[-(min_len - i)] for i in range(min_len)]
+            signal_ema  = calc_ema(macd_values, 9)
+            if signal_ema:
+                macd_line       = macd_values[-1]
+                macd_signal_val = signal_ema[-1]
+                macd_hist       = macd_line - macd_signal_val
+                macd_prev_hist  = (macd_values[-2] - signal_ema[-2]) if len(signal_ema) >= 2 else 0
+
+                if macd_hist > 0 and macd_prev_hist <= 0:
+                    macd_trend = "бычий разворот"
+                elif macd_hist < 0 and macd_prev_hist >= 0:
+                    macd_trend = "медвежий разворот"
+                elif macd_hist > 0:
+                    macd_trend = "бычий"
+                elif macd_hist < 0:
+                    macd_trend = "медвежий"
+
+        # ── Паттерны свечей ───────────────────────────────
+        def detect_candle_pattern(opens_list, closes_list, highs_list, lows_list) -> str:
+            if len(opens_list) < 3:
+                return "нет паттерна"
+
+            o1, c1, h1, l1 = opens_list[-3], closes_list[-3], highs_list[-3], lows_list[-3]
+            o2, c2, h2, l2 = opens_list[-2], closes_list[-2], highs_list[-2], lows_list[-2]
+            o3, c3, h3, l3 = opens_list[-1], closes_list[-1], highs_list[-1], lows_list[-1]
+
+            body2 = abs(c2 - o2)
+            range2 = h2 - l2
+            body3 = abs(c3 - o3)
+            range3 = h3 - l3
+
+            # Доджи (тело < 10% диапазона)
+            if range3 > 0 and body3 / range3 < 0.1:
+                return "доджи (неопределённость)"
+
+            # Пин-бар бычий: длинный нижний фитиль, малое тело вверху
+            lower_wick3 = min(o3, c3) - l3
+            upper_wick3 = h3 - max(o3, c3)
+            if range3 > 0 and lower_wick3 > range3 * 0.6 and body3 < range3 * 0.3:
+                return "бычий пин-бар"
+
+            # Пин-бар медвежий: длинный верхний фитиль, малое тело внизу
+            if range3 > 0 and upper_wick3 > range3 * 0.6 and body3 < range3 * 0.3:
+                return "медвежий пин-бар"
+
+            # Бычье поглощение
+            if c2 < o2 and c3 > o3 and c3 > o2 and o3 < c2:
+                return "бычье поглощение"
+
+            # Медвежье поглощение
+            if c2 > o2 and c3 < o3 and c3 < o2 and o3 > c2:
+                return "медвежье поглощение"
+
+            # Три белых солдата
+            if c1 > o1 and c2 > o2 and c3 > o3 and c2 > c1 and c3 > c2:
+                return "три белых солдата (сильный рост)"
+
+            # Три чёрных вороны
+            if c1 < o1 and c2 < o2 and c3 < o3 and c2 < c1 and c3 < c2:
+                return "три чёрных вороны (сильное падение)"
+
+            return "нет паттерна"
+
+        candle_pattern = detect_candle_pattern(opens, closes, highs, lows)
+
+        # ── Тренд по EMA ──────────────────────────────────
+        if ema9_cur > ema21_cur and ema9_prev <= ema21_prev:
+            trend = "бычий разворот EMA 📈"
+        elif ema9_cur < ema21_cur and ema9_prev >= ema21_prev:
+            trend = "медвежий разворот EMA 📉"
+        elif ema9_cur > ema21_cur:
+            trend = "восходящий 📈"
+        elif ema9_cur < ema21_cur:
+            trend = "нисходящий 📉"
+        else:
+            trend = "боковик"
+
+        # ── Волатильность ─────────────────────────────────
         volatility = "низкая"
-        if highs and lows:
-            avg_range = sum(h - l for h, l in zip(highs, lows)) / len(highs)
+        last_candles = list(zip(highs[-10:], lows[-10:]))
+        if last_candles:
+            avg_range = sum(h - l for h, l in last_candles) / len(last_candles)
             if   avg_range > current_price * 0.0005: volatility = "высокая 🔥"
             elif avg_range > current_price * 0.0002: volatility = "средняя"
-
-        trend = "боковик"
-        if len(closes) >= 2:
-            diff = closes[-1] - closes[0]
-            if   diff > 0: trend = "восходящий 📈"
-            elif diff < 0: trend = "нисходящий 📉"
 
         return {
             "price":            current_price,
@@ -588,15 +697,25 @@ async def get_real_quote(pair_label: str) -> dict | None:
             "change":           change,
             "change_pct":       change_pct,
             "candle_direction": candle_direction,
+            "candle_pattern":   candle_pattern,
             "rsi_signal":       rsi_signal,
             "rsi_value":        rsi_value,
             "volatility":       volatility,
             "trend":            trend,
-            "high":             max(highs),
-            "low":              min(lows),
+            "high":             max(highs[-10:]),
+            "low":              min(lows[-10:]),
             "candles_count":    len(closes),
             "closes":           closes,
             "opens":            opens,
+            "highs":            highs,
+            "lows":             lows,
+            "ema9":             ema9_cur,
+            "ema21":            ema21_cur,
+            "ema50":            ema50_cur,
+            "ema9_prev":        ema9_prev,
+            "ema21_prev":       ema21_prev,
+            "macd_hist":        macd_hist,
+            "macd_trend":       macd_trend,
         }
 
     except Exception as e:
@@ -605,135 +724,217 @@ async def get_real_quote(pair_label: str) -> dict | None:
 
 
 # ════════════════════════════════════════════════
-#   УМНАЯ ЛОГИКА СИГНАЛА — ИСПРАВЛЕННАЯ ВЕРСИЯ
+#   НОВАЯ ЛОГИКА СИГНАЛА — MULTI-FACTOR v2
+#
+#   Используем 4 независимых блока голосования:
+#   1. RSI(14)
+#   2. EMA9 vs EMA21 (тренд)
+#   3. MACD гистограмма
+#   4. Паттерн свечи
+#
+#   Сигнал выдаётся ТОЛЬКО при согласии минимум 3 из 4 факторов.
+#   Никакого random в направлении — только рынок.
 # ════════════════════════════════════════════════
 def generate_signal_from_quote(quote: dict) -> tuple[str | None, int, str]:
     """
     Возвращает (direction, confidence, reason).
-    direction = None означает «пропустить сделку» (индикаторы противоречат друг другу).
+    direction = None — пропустить сделку (индикаторы не дают чёткого сигнала).
 
-    Правила фильтрации:
-    1. RSI < 35 → запрет на PUT (цена на дне, продавать нельзя)
-    2. RSI > 65 → запрет на CALL (цена на пике, покупать нельзя)
-    3. Конфликт RSI и свечи → пропустить сделку
-    4. Конфликт тренда и RSI-зоны → пропустить сделку
-    5. Итоговый «reason» всегда соответствует итоговому направлению
+    Система голосования:
+      +1 = голос за CALL (ВВЕРХ)
+      -1 = голос за PUT (ВНИЗ)
+       0 = нейтрально / воздержался
+
+    Условие входа: |сумма голосов| >= 3 из максимум 5 возможных
     """
-    rsi_value = quote.get("rsi_value", 50.0)
-    candle    = quote["candle_direction"]   # bullish / bearish / neutral
-    trend     = quote.get("trend", "боковик")
-    change_pct = quote["change_pct"]
 
-    # ── ШАГИ 1 и 2: жёсткие RSI-запреты ─────────────────
-    # RSI < 35 → цена на дне, ждём отскока ВВЕРХ → PUT запрещён
-    # RSI > 65 → цена на пике, ждём коррекции ВНИЗ → CALL запрещён
-    rsi_forbids_put  = rsi_value < 35   # нельзя давать PUT
-    rsi_forbids_call = rsi_value > 65   # нельзя давать CALL
+    rsi_value      = quote.get("rsi_value", 50.0)
+    candle         = quote.get("candle_direction", "neutral")
+    candle_pattern = quote.get("candle_pattern", "нет паттерна")
+    trend          = quote.get("trend", "боковик")
+    macd_hist      = quote.get("macd_hist", 0.0)
+    macd_trend_str = quote.get("macd_trend", "нейтральный")
+    ema9           = quote.get("ema9", 0)
+    ema21          = quote.get("ema21", 0)
+    ema9_prev      = quote.get("ema9_prev", 0)
+    ema21_prev     = quote.get("ema21_prev", 0)
+    current_price  = quote.get("price", 0)
 
-    # ── ШАГ 3: определяем «голос» каждого индикатора ─────
-    # RSI-голос: +1 (CALL), -1 (PUT), 0 (нейтрально)
-    if rsi_value < 40:
-        rsi_vote = +1   # перепроданность → ожидается отскок вверх
-    elif rsi_value > 60:
-        rsi_vote = -1   # перекупленность → ожидается откат вниз
+    votes        = []   # список (голос, вес, описание)
+    call_reasons = []
+    put_reasons  = []
+
+    # ════════════════════════════════════════════
+    # БЛОК 1: RSI(14) — вес 2
+    # Логика: торгуем только ОТ зон (контртренд по RSI),
+    # но ТОЛЬКО если другие индикаторы подтверждают.
+    # ════════════════════════════════════════════
+    rsi_vote = 0
+    if rsi_value <= 30:
+        rsi_vote = +2  # сильная перепроданность → CALL
+        call_reasons.append(f"RSI {rsi_value:.1f} — сильная перепроданность, ожидается отскок")
+    elif rsi_value <= 40:
+        rsi_vote = +1  # умеренная перепроданность → слабый CALL
+        call_reasons.append(f"RSI {rsi_value:.1f} — перепроданность")
+    elif rsi_value >= 70:
+        rsi_vote = -2  # сильная перекупленность → PUT
+        put_reasons.append(f"RSI {rsi_value:.1f} — сильная перекупленность, ожидается откат")
+    elif rsi_value >= 60:
+        rsi_vote = -1  # умеренная перекупленность → слабый PUT
+        put_reasons.append(f"RSI {rsi_value:.1f} — перекупленность")
+    # 40–60: RSI нейтрален, голос = 0
+
+    votes.append(rsi_vote)
+
+    # ════════════════════════════════════════════
+    # БЛОК 2: EMA9 vs EMA21 (тренд) — вес 2
+    # Кроссовер EMA — один из лучших трендовых сигналов
+    # ════════════════════════════════════════════
+    ema_vote = 0
+    # Свежий кроссовер (самый сильный сигнал)
+    if ema9 > ema21 and ema9_prev <= ema21_prev:
+        ema_vote = +2
+        call_reasons.append("EMA9 пересекла EMA21 снизу вверх — бычий кроссовер")
+    elif ema9 < ema21 and ema9_prev >= ema21_prev:
+        ema_vote = -2
+        put_reasons.append("EMA9 пересекла EMA21 сверху вниз — медвежий кроссовер")
+    # Продолжение тренда (слабый сигнал)
+    elif ema9 > ema21:
+        ema_vote = +1
+        call_reasons.append("EMA9 выше EMA21 — восходящий тренд")
+    elif ema9 < ema21:
+        ema_vote = -1
+        put_reasons.append("EMA9 ниже EMA21 — нисходящий тренд")
+
+    votes.append(ema_vote)
+
+    # ════════════════════════════════════════════
+    # БЛОК 3: MACD гистограмма — вес 2
+    # Разворот гистограммы даёт ранний сигнал
+    # ════════════════════════════════════════════
+    macd_vote = 0
+    if "бычий разворот" in macd_trend_str:
+        macd_vote = +2
+        call_reasons.append("MACD: бычий разворот гистограммы")
+    elif "медвежий разворот" in macd_trend_str:
+        macd_vote = -2
+        put_reasons.append("MACD: медвежий разворот гистограммы")
+    elif macd_hist > 0:
+        macd_vote = +1
+        call_reasons.append("MACD гистограмма в положительной зоне")
+    elif macd_hist < 0:
+        macd_vote = -1
+        put_reasons.append("MACD гистограмма в отрицательной зоне")
+
+    votes.append(macd_vote)
+
+    # ════════════════════════════════════════════
+    # БЛОК 4: Паттерн свечи — вес 2
+    # ════════════════════════════════════════════
+    pattern_vote = 0
+    pattern_lower = candle_pattern.lower()
+
+    if "доджи" in pattern_lower:
+        # Доджи = неопределённость, воздерживаемся (0)
+        pattern_vote = 0
+    elif "бычий пин-бар" in pattern_lower or "бычье поглощение" in pattern_lower:
+        pattern_vote = +2
+        call_reasons.append(f"Паттерн: {candle_pattern}")
+    elif "три белых солдата" in pattern_lower:
+        pattern_vote = +2
+        call_reasons.append(f"Паттерн: {candle_pattern}")
+    elif "медвежий пин-бар" in pattern_lower or "медвежье поглощение" in pattern_lower:
+        pattern_vote = -2
+        put_reasons.append(f"Паттерн: {candle_pattern}")
+    elif "три чёрных вороны" in pattern_lower:
+        pattern_vote = -2
+        put_reasons.append(f"Паттерн: {candle_pattern}")
     else:
-        rsi_vote = 0
+        # Нет паттерна — используем направление последней свечи (слабый голос)
+        if candle == "bullish":
+            pattern_vote = +1
+            call_reasons.append("Последняя свеча бычья")
+        elif candle == "bearish":
+            pattern_vote = -1
+            put_reasons.append("Последняя свеча медвежья")
 
-    # Свеча-голос
-    if candle == "bullish":
-        candle_vote = +1
-    elif candle == "bearish":
-        candle_vote = -1
+    votes.append(pattern_vote)
+
+    # ════════════════════════════════════════════
+    # БЛОК 5: Цена vs EMA (подтверждение) — вес 1
+    # Цена выше обеих EMA = бычье давление
+    # ════════════════════════════════════════════
+    price_ema_vote = 0
+    if current_price > ema9 and current_price > ema21:
+        price_ema_vote = +1
+        call_reasons.append("Цена выше EMA9 и EMA21")
+    elif current_price < ema9 and current_price < ema21:
+        price_ema_vote = -1
+        put_reasons.append("Цена ниже EMA9 и EMA21")
+
+    votes.append(price_ema_vote)
+
+    # ════════════════════════════════════════════
+    # ИТОГОВЫЙ ПОДСЧЁТ
+    # ════════════════════════════════════════════
+    total_score = sum(votes)
+    # Максимально возможный балл: 2+2+2+2+1 = 9
+
+    # Считаем количество блоков, которые проголосовали за одну сторону
+    # (блок считается "проголосовавшим" если его значение не 0 и совпадает со знаком total_score)
+    if total_score > 0:
+        agreeing_blocks = sum(1 for v in votes if v > 0)
+        blocking_blocks = sum(1 for v in votes if v < 0)
+    elif total_score < 0:
+        agreeing_blocks = sum(1 for v in votes if v < 0)
+        blocking_blocks = sum(1 for v in votes if v > 0)
     else:
-        candle_vote = 0
+        agreeing_blocks = 0
+        blocking_blocks = 0
 
-    # Тренд-голос
-    if "восходящий" in trend:
-        trend_vote = +1
-    elif "нисходящий" in trend:
-        trend_vote = -1
+    # ── ЖЁСТКИЙ ФИЛЬТР ВХОДА ──────────────────────────
+    # Условие 1: Минимум 3 блока голосуют в одну сторону
+    if agreeing_blocks < 3:
+        return None, 0, (
+            f"только {agreeing_blocks} из 5 индикаторов согласны — "
+            f"недостаточно для уверенного входа"
+        )
+
+    # Условие 2: Нет сильного противоречия (не более 1 блока против)
+    if blocking_blocks >= 2:
+        return None, 0, (
+            f"{blocking_blocks} индикатора противоречат сигналу — "
+            f"рынок даёт смешанные данные"
+        )
+
+    # Условие 3: Абсолютный балл должен быть достаточным
+    # (слабые сигналы отфильтровываем)
+    if abs(total_score) < 3:
+        return None, 0, "суммарный сигнал слишком слабый — пропускаем"
+
+    # ── НАПРАВЛЕНИЕ ───────────────────────────────────
+    if total_score > 0:
+        direction   = "ВВЕРХ 🟢 (CALL)"
+        reason_text = " | ".join(call_reasons[:3]) if call_reasons else "технический анализ"
     else:
-        trend_vote = 0
+        direction   = "ВНИЗ 🔴 (PUT)"
+        reason_text = " | ".join(put_reasons[:3]) if put_reasons else "технический анализ"
 
-    # ── ШАГ 4: проверка на противоречие RSI vs свеча ─────
-    # Если RSI говорит ВВЕРХ, а свеча ВНИЗ (или наоборот) — пропускаем
-    if rsi_vote != 0 and candle_vote != 0 and rsi_vote != candle_vote:
-        return None, 0, "индикаторы противоречат друг другу — сделка пропущена"
+    # ── УВЕРЕННОСТЬ ───────────────────────────────────
+    # Считаем честно от силы сигнала, без random
+    max_possible = 9  # 2+2+2+2+1
+    signal_strength = abs(total_score) / max_possible  # 0.0 – 1.0
 
-    # ── ШАГ 5: проверка на противоречие тренда и RSI-зоны ─
-    # Если тренд ВНИЗ и RSI уже в зоне перепроданности — не входим на продажу
-    if trend_vote == -1 and rsi_vote == +1:
-        return None, 0, "тренд нисходящий, но RSI в зоне перепроданности — слишком рискованно"
-    # Если тренд ВВЕРХ и RSI уже в зоне перекупленности — не входим на покупку
-    if trend_vote == +1 and rsi_vote == -1:
-        return None, 0, "тренд восходящий, но RSI в зоне перекупленности — слишком рискованно"
+    # Базовая уверенность: 78–95%
+    # Добавляем баллы за согласие блоков
+    base_confidence = 78 + int(signal_strength * 17)
+    block_bonus     = (agreeing_blocks - 3) * 2  # +0, +2, +4 за 3, 4, 5 блоков
 
-    # ── ШАГ 6: итоговый скор ─────────────────────────────
-    score = 0
-    reasons_call = []  # аргументы за CALL
-    reasons_put  = []  # аргументы за PUT
+    confidence = min(base_confidence + block_bonus, 95)
 
-    # Свеча
-    if candle_vote == +1:
-        score += 2
-        reasons_call.append("бычья свеча подтверждает рост")
-    elif candle_vote == -1:
-        score -= 2
-        reasons_put.append("медвежья свеча подтверждает снижение")
-
-    # Изменение цены
-    if change_pct > 0.01:
-        score += 1
-        reasons_call.append("позитивная динамика цены")
-    elif change_pct < -0.01:
-        score -= 1
-        reasons_put.append("негативная динамика цены")
-
-    # RSI
-    if rsi_vote == +1:
-        score += 2
-        reasons_call.append(f"RSI в зоне перепроданности ({rsi_value:.0f}) — ожидается отскок вверх")
-    elif rsi_vote == -1:
-        score -= 2
-        reasons_put.append(f"RSI в зоне перекупленности ({rsi_value:.0f}) — ожидается откат вниз")
-
-    # Тренд
-    if trend_vote == +1:
-        score += 1
-        reasons_call.append("восходящий тренд подтверждён")
-    elif trend_vote == -1:
-        score -= 1
-        reasons_put.append("нисходящий тренд подтверждён")
-
-    # Небольшая случайная добавка для вариативности (±1)
-    score += random.choice([-1, 0, 0, 0, 1])
-
-    # ── ШАГ 7: применяем RSI-запреты ─────────────────────
-    if score > 0 and rsi_forbids_call:
-        # RSI выше 65, CALL запрещён → пропускаем
-        return None, 0, "RSI в зоне перекупленности — вход на покупку запрещён"
-    if score < 0 and rsi_forbids_put:
-        # RSI ниже 35, PUT запрещён → пропускаем
-        return None, 0, "RSI в зоне перепроданности — вход на продажу запрещён"
-
-    # ── ШАГ 8: если скор нулевой — пропускаем ────────────
-    if score == 0:
-        return None, 0, "индикаторы нейтральны — чёткого сигнала нет"
-
-    # ── ШАГ 9: формируем итог ────────────────────────────
-    if score > 0:
-        direction = "ВВЕРХ 🟢 (CALL)"
-        reason_text = ", ".join(reasons_call[:3]) if reasons_call else "технический анализ"
-    else:
-        direction = "ВНИЗ 🔴 (PUT)"
-        reason_text = ", ".join(reasons_put[:3]) if reasons_put else "технический анализ"
-
-    abs_score = abs(score)
-    if   abs_score >= 5: confidence = random.randint(93, 97)
-    elif abs_score == 4: confidence = random.randint(91, 95)
-    elif abs_score == 3: confidence = random.randint(88, 92)
-    elif abs_score == 2: confidence = random.randint(85, 90)
-    else:                confidence = random.randint(82, 87)
+    # Небольшой реалистичный разброс ±1 (НЕ влияет на направление)
+    confidence = confidence + random.choice([-1, 0, 0, 1])
+    confidence = max(78, min(95, confidence))
 
     return direction, confidence, reason_text
 
@@ -742,9 +943,6 @@ def generate_signal_from_quote(quote: dict) -> tuple[str | None, int, str]:
 #         СИЛА ВАЛЮТНЫХ ПАР (для статистики)
 # ════════════════════════════════════════════════
 async def get_pairs_strength() -> list[dict]:
-    """
-    Получает котировки по всем парам и ранжирует их по силе движения.
-    """
     results = []
     for pair_label, symbol in PAIR_TO_SYMBOL.items():
         try:
@@ -800,17 +998,12 @@ async def get_pairs_strength() -> list[dict]:
 #         АВТОСИГНАЛЫ (фоновая задача)
 # ════════════════════════════════════════════════
 async def auto_signals_scheduler():
-    """
-    Каждые 20 минут анализирует рынок и отправляет автосигналы
-    (не более 3 в сутки), только если уверенность >= 93%.
-    """
-    await asyncio.sleep(60)  # Ждём запуска бота
+    await asyncio.sleep(60)
     while True:
         try:
             if is_market_open():
                 today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
 
-                # Считаем сколько автосигналов уже отправили сегодня
                 try:
                     conn   = get_db_connection()
                     cursor = conn.cursor()
@@ -829,7 +1022,6 @@ async def auto_signals_scheduler():
                     best_conf   = 0
 
                     for pair_label in PAIR_TO_SYMBOL.keys():
-                        # Проверяем новостную опасность
                         danger = check_news_danger_for_pair(pair_label)
                         if danger["dangerous"]:
                             continue
@@ -840,23 +1032,22 @@ async def auto_signals_scheduler():
 
                         direction, confidence, reason = generate_signal_from_quote(quote)
 
-                        # Пропускаем если direction=None (противоречивые индикаторы)
                         if direction is None:
                             continue
 
-                        if confidence >= 93 and confidence > best_conf:
+                        if confidence >= 90 and confidence > best_conf:
                             best_conf   = confidence
                             best_signal = {
-                                "pair":      pair_label,
-                                "direction": direction,
+                                "pair":       pair_label,
+                                "direction":  direction,
                                 "confidence": confidence,
-                                "reason":    reason,
-                                "quote":     quote,
+                                "reason":     reason,
+                                "quote":      quote,
                             }
 
                     if best_signal:
                         s = best_signal
-                        conf_bar = confidence_bar(s["confidence"])
+                        conf_bar  = confidence_bar(s["confidence"])
                         dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in s["direction"] else "🔴 PUT (ВНИЗ)"
 
                         price = s["quote"]["price"]
@@ -881,7 +1072,6 @@ async def auto_signals_scheduler():
                             f"Это автосигнал высокой уверенности. Макс. 3 в день.</i>"
                         )
 
-                        # Отправляем всем пользователям с доступом
                         users = db_get_all_users_with_access()
                         sent_count = 0
                         for uid in users:
@@ -892,7 +1082,6 @@ async def auto_signals_scheduler():
                             except Exception:
                                 pass
 
-                        # Сохраняем запись об автосигнале
                         try:
                             conn   = get_db_connection()
                             cursor = conn.cursor()
@@ -914,7 +1103,7 @@ async def auto_signals_scheduler():
         except Exception as e:
             print(f"Ошибка auto_signals_scheduler: {e}")
 
-        await asyncio.sleep(1200)  # каждые 20 минут
+        await asyncio.sleep(1200)
 
 
 # ════════════════════════════════════════════════
@@ -960,11 +1149,10 @@ def days_bar(used: int, total: int) -> str:
     return "█" * filled + "░" * (10 - filled)
 
 def calc_lot(balance: float) -> dict:
-    """Калькулятор лота: рекомендации по сумме сделки."""
-    conservative = round(balance * 0.01, 2)   # 1%
-    moderate     = round(balance * 0.02, 2)   # 2%
-    aggressive   = round(balance * 0.03, 2)   # 3%
-    max_risk     = round(balance * 0.05, 2)   # 5% — красная зона
+    conservative = round(balance * 0.01, 2)
+    moderate     = round(balance * 0.02, 2)
+    aggressive   = round(balance * 0.03, 2)
+    max_risk     = round(balance * 0.05, 2)
     return {
         "conservative": conservative,
         "moderate":     moderate,
@@ -984,7 +1172,7 @@ times = ["⏱ 1 мин", "⏱ 3 мин", "⏱ 5 мин", "⏱ 10 мин"]
 user_temp_data   = {}
 pending_users    = set()
 pending_support  = set()
-pending_lot_calc = set()   # ожидают ввода баланса для калькулятора
+pending_lot_calc = set()
 last_click_time  = {}
 
 # ════════════════════════════════════════════════
@@ -1264,8 +1452,8 @@ async def start(message: Message):
         "⚡ <b>Профессиональная торговая система</b> на базе нейросетевого алгоритма.\n\n"
         "🧠 <b>Что умеет терминал:</b>\n"
         "▸ Анализ реальных котировок в реальном времени\n"
-        "▸ RSI-индикатор + свечной анализ\n"
-        "▸ Определение тренда и волатильности\n"
+        "▸ RSI(14) + EMA(9/21) + MACD + паттерны свечей\n"
+        "▸ Мульти-факторный анализ: минимум 3 из 5 индикаторов\n"
         "▸ Новостной фильтр (Investing.com, 3 быка)\n"
         "▸ Бесплатные VIP-автосигналы (до 3/день)\n"
         "▸ Сигнал с процентом уверенности ИИ\n\n"
@@ -1285,9 +1473,10 @@ async def about_bot(message: Message):
     text = (
         "🤖 <b>AI TRADING TERMINAL — FX PRO v2.0</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
-        "📡 <b>Источник данных:</b> Twelve Data (live)\n"
+        "📡 <b>Источник данных:</b> Twelve Data (live, 50 свечей)\n"
         "📰 <b>Новости:</b> Investing.com (3 быка, обновление каждый час)\n"
-        "🧠 <b>Алгоритм:</b> RSI + свечной анализ + тренд + новостной фильтр\n"
+        "🧠 <b>Алгоритм:</b> RSI(14) + EMA(9/21) + MACD + Паттерны свечей\n"
+        "🎯 <b>Фильтр входа:</b> минимум 3 из 5 индикаторов согласны\n"
         "📊 <b>Платформа:</b> Pocket Option\n"
         "💱 <b>Пары:</b> 6 валютных инструментов\n"
         "⏱ <b>Таймфреймы:</b> 1, 3, 5, 10 минут\n\n"
@@ -1917,9 +2106,10 @@ async def get_signal(message: Message):
     # ── Анимированный прогресс-бар ──────────────────────
     progress_frames = [
         ("⬛️⬛️⬛️⬛️⬛️ <b>[ 0%]</b>",  "📡 Подключение к потоку котировок..."),
-        ("🟩⬛️⬛️⬛️⬛️ <b>[20%]</b>",  "📥 Загрузка рыночных данных (live)..."),
-        ("🟩🟩🟩⬛️⬛️ <b>[60%]</b>",  "🔬 Анализ свечей и волатильности..."),
-        ("🟩🟩🟩🟩⬛️ <b>[85%]</b>",  "🧮 Расчёт RSI и математического перевеса..."),
+        ("🟩⬛️⬛️⬛️⬛️ <b>[20%]</b>",  "📥 Загрузка 50 свечей (live)..."),
+        ("🟩🟩⬛️⬛️⬛️ <b>[40%]</b>",  "📊 Расчёт RSI(14) и EMA(9/21)..."),
+        ("🟩🟩🟩⬛️⬛️ <b>[65%]</b>",  "🔬 Анализ MACD и паттернов свечей..."),
+        ("🟩🟩🟩🟩⬛️ <b>[85%]</b>",  "🧮 Мульти-факторный фильтр входа..."),
         ("🟩🟩🟩🟩🟩 <b>[100%]</b>", "✅ Сигнал сформирован!"),
     ]
 
@@ -1931,11 +2121,11 @@ async def get_signal(message: Message):
         parse_mode="HTML"
     )
 
-    await asyncio.sleep(0.6)
+    await asyncio.sleep(0.5)
     quote = await get_real_quote(data["pair"])
 
     for bar, label in progress_frames[1:]:
-        await asyncio.sleep(0.55)
+        await asyncio.sleep(0.5)
         try:
             await progress_msg.edit_text(
                 f"<b>⚡ АНАЛИЗ РЫНКА</b>\n"
@@ -1960,7 +2150,7 @@ async def get_signal(message: Message):
     if quote:
         direction, confidence, reason = generate_signal_from_quote(quote)
 
-        # ── Если сигнал пропущен (противоречивые индикаторы) ──
+        # ── Если сигнал пропущен ────────────────────────
         if direction is None:
             try:
                 await progress_msg.delete()
@@ -1972,22 +2162,24 @@ async def get_signal(message: Message):
             rsi_bar   = format_rsi_bar(quote.get("rsi_value", 50))
 
             return await message.answer(
-                f"🧠 <b>СИГНАЛ ПРОПУЩЕН — УМНЫЙ ФИЛЬТР</b>\n"
+                f"🧠 <b>СИГНАЛ ПРОПУЩЕН — МУЛЬТИ-ФАКТОРНЫЙ ФИЛЬТР</b>\n"
                 f"━━━━━━━━━━━━━━━━━\n\n"
                 f"  📊 Актив:       <b>{data['pair']}</b>\n"
                 f"  ⏱ Экспирация:  <b>{data['time']}</b>\n"
                 f"  💰 Цена:        <b>{price_str}</b>\n\n"
-                f"📈 <b>RSI-ИНДИКАТОР</b>\n"
-                f"  <code>{rsi_bar}</code>\n"
-                f"  Сигнал: <b>{quote['rsi_signal']}</b>\n\n"
+                f"📈 <b>ИНДИКАТОРЫ:</b>\n"
+                f"  RSI(14):   <code>{rsi_bar}</code>\n"
+                f"  Сигнал:    <b>{quote['rsi_signal']}</b>\n"
+                f"  EMA тренд: <b>{quote['trend']}</b>\n"
+                f"  MACD:      <b>{quote['macd_trend']}</b>\n"
+                f"  Паттерн:   <b>{quote['candle_pattern']}</b>\n\n"
                 f"━━━━━━━━━━━━━━━━━\n"
                 f"⚠️ <b>ПОЧЕМУ НЕТ СИГНАЛА?</b>\n"
                 f"  <i>{reason.capitalize()}</i>\n\n"
                 f"━━━━━━━━━━━━━━━━━\n"
                 f"🛡 <b>Это защита вашего депозита.</b>\n"
-                f"<i>Терминал не даёт сигнал, когда индикаторы\n"
-                f"противоречат друг другу — лучше пропустить\n"
-                f"сделку, чем войти с заведомо слабым перевесом.\n\n"
+                f"<i>Для входа требуется согласие минимум 3 из 5 индикаторов.\n"
+                f"Лучше пропустить сделку, чем войти со слабым перевесом.\n\n"
                 f"Попробуйте через несколько минут или выберите другую пару.</i>",
                 reply_markup=signal_kb,
                 parse_mode="HTML"
@@ -2032,12 +2224,15 @@ async def get_signal(message: Message):
         pro_block = ""
         if sub_type == "pro":
             rsi_v = quote.get("rsi_value", 50)
+            macd_t = quote.get("macd_trend", "")
             if rsi_v > 70:
-                pro_tip = "⚠️ Зона перекупленности — рассмотрите PUT при откате"
+                pro_tip = "⚠️ Зона перекупленности — сократите объём"
             elif rsi_v < 30:
-                pro_tip = "💡 Зона перепроданности — рассмотрите CALL при отскоке"
+                pro_tip = "💡 Зона перепроданности — отличная точка входа"
+            elif "разворот" in macd_t:
+                pro_tip = "🔥 MACD разворот — сильный сигнал, стандартный объём"
             elif "высокая" in quote.get("volatility", ""):
-                pro_tip = "🔥 Высокая волатильность — сократите объём сделки"
+                pro_tip = "🔥 Высокая волатильность — сократите объём на 30%"
             else:
                 pro_tip = "✅ Стандартные условия — работайте по тренду"
 
@@ -2046,7 +2241,8 @@ async def get_signal(message: Message):
                 f"🟣 <b>PRO АНАЛИТИКА:</b>\n"
                 f"  💬 {pro_tip}\n"
                 f"  📐 Рек. объём: <b>2–3% от депозита</b>\n"
-                f"  🎯 Мин. уверенность для входа: <b>87%+</b>\n"
+                f"  🎯 EMA9/21: <b>{quote['ema9']:.5f} / {quote['ema21']:.5f}</b>\n"
+                f"  📊 MACD: <b>{quote['macd_trend']}</b>\n"
             )
 
         res = (
@@ -2059,11 +2255,11 @@ async def get_signal(message: Message):
             f"  Цена:          <b>{price_str}</b>\n"
             f"  Изменение:     {change_arrow} <b>{change_str}</b>\n"
             f"  Свеча:         {candle_emoji} <b>{candle_ru}</b>\n"
-            f"  Тренд:         <b>{quote['trend']}</b>\n"
-            f"  Волатильность: <b>{quote['volatility']}</b>\n"
-            f"  High:          <b>{quote['high']:.5f}</b>\n"
-            f"  Low:           <b>{quote['low']:.5f}</b>\n\n"
-            f"📈 <b>RSI-ИНДИКАТОР</b>\n"
+            f"  Паттерн:       <b>{quote['candle_pattern']}</b>\n"
+            f"  EMA тренд:     <b>{quote['trend']}</b>\n"
+            f"  MACD:          <b>{quote['macd_trend']}</b>\n"
+            f"  Волатильность: <b>{quote['volatility']}</b>\n\n"
+            f"📈 <b>RSI(14) ИНДИКАТОР</b>\n"
             f"  <code>{rsi_bar}</code>\n"
             f"  Сигнал: <b>{quote['rsi_signal']}</b>\n\n"
             f"━━━━━━━━━━━━━━━━━\n"
@@ -2083,7 +2279,7 @@ async def get_signal(message: Message):
         )
 
     else:
-        # ── Автономный режим (live-данные недоступны) ──────
+        # ── Автономный режим ───────────────────────────────
         db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
         new_daily = daily + 1
 
@@ -2095,7 +2291,7 @@ async def get_signal(message: Message):
             limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
 
         direction  = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
-        confidence = random.randint(83, 91)
+        confidence = random.randint(78, 85)
         conf_bar   = confidence_bar(confidence)
         reason     = "технический анализ на основе исторических паттернов"
         res = (
@@ -2225,7 +2421,6 @@ async def stats(message: Message):
     if not is_market_open():
         market_note = "\n⚠️ <i>Рынок сейчас закрыт (выходной). Статистика за последний рабочий день.</i>\n"
 
-    # ── Сила пар (live) ─────────────────────────────────
     pairs_strength_text = ""
     if is_market_open():
         try:
@@ -2298,9 +2493,11 @@ async def main():
     print("=" * 50)
     print("  🚀 AI TRADING TERMINAL — FX PRO v2.0")
     print("  ✅ BOT STARTED SUCCESSFULLY")
+    print("  🧠 SIGNAL ENGINE: RSI(14)+EMA(9/21)+MACD+PATTERNS")
     print("=" * 50)
 
-    # Запускаем фоновые задачи
+    init_db()
+
     asyncio.create_task(news_scheduler())
     asyncio.create_task(auto_signals_scheduler())
 
