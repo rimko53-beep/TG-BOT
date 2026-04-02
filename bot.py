@@ -320,11 +320,8 @@ async def fetch_investing_news() -> list[dict]:
                     return []
                 html = await resp.text()
 
-        # Парсим строки таблицы вручную (без beautifulsoup)
         import re
 
-        # Ищем строки с high impact (bull3 / sentiment3 / impact-high)
-        # Investing маркирует важность классом "bull" * N или data-img_key="bull3"
         row_pattern = re.compile(
             r'<tr[^>]*?id="eventRowId_(\d+)"[^>]*?>(.*?)</tr>',
             re.DOTALL
@@ -352,9 +349,7 @@ async def fetch_investing_news() -> list[dict]:
             title          = title_m.group(1).strip()
             currency       = curr_m.group(1).strip()
 
-            # Парсим время события в МСК
             try:
-                # Investing показывает время в GMT, добавляем +3
                 event_dt_str = f"{today_msk} {event_time_str}"
                 event_dt_gmt = datetime.strptime(event_dt_str, "%Y-%m-%d %H:%M")
                 event_dt_msk = event_dt_gmt + timedelta(hours=3)
@@ -609,45 +604,129 @@ async def get_real_quote(pair_label: str) -> dict | None:
         return None
 
 
-def generate_signal_from_quote(quote: dict) -> tuple[str, int, str]:
-    """Возвращает (direction, confidence, reason)."""
+# ════════════════════════════════════════════════
+#   УМНАЯ ЛОГИКА СИГНАЛА — ИСПРАВЛЕННАЯ ВЕРСИЯ
+# ════════════════════════════════════════════════
+def generate_signal_from_quote(quote: dict) -> tuple[str | None, int, str]:
+    """
+    Возвращает (direction, confidence, reason).
+    direction = None означает «пропустить сделку» (индикаторы противоречат друг другу).
+
+    Правила фильтрации:
+    1. RSI < 35 → запрет на PUT (цена на дне, продавать нельзя)
+    2. RSI > 65 → запрет на CALL (цена на пике, покупать нельзя)
+    3. Конфликт RSI и свечи → пропустить сделку
+    4. Конфликт тренда и RSI-зоны → пропустить сделку
+    5. Итоговый «reason» всегда соответствует итоговому направлению
+    """
+    rsi_value = quote.get("rsi_value", 50.0)
+    candle    = quote["candle_direction"]   # bullish / bearish / neutral
+    trend     = quote.get("trend", "боковик")
+    change_pct = quote["change_pct"]
+
+    # ── ШАГИ 1 и 2: жёсткие RSI-запреты ─────────────────
+    # RSI < 35 → цена на дне, ждём отскока ВВЕРХ → PUT запрещён
+    # RSI > 65 → цена на пике, ждём коррекции ВНИЗ → CALL запрещён
+    rsi_forbids_put  = rsi_value < 35   # нельзя давать PUT
+    rsi_forbids_call = rsi_value > 65   # нельзя давать CALL
+
+    # ── ШАГ 3: определяем «голос» каждого индикатора ─────
+    # RSI-голос: +1 (CALL), -1 (PUT), 0 (нейтрально)
+    if rsi_value < 40:
+        rsi_vote = +1   # перепроданность → ожидается отскок вверх
+    elif rsi_value > 60:
+        rsi_vote = -1   # перекупленность → ожидается откат вниз
+    else:
+        rsi_vote = 0
+
+    # Свеча-голос
+    if candle == "bullish":
+        candle_vote = +1
+    elif candle == "bearish":
+        candle_vote = -1
+    else:
+        candle_vote = 0
+
+    # Тренд-голос
+    if "восходящий" in trend:
+        trend_vote = +1
+    elif "нисходящий" in trend:
+        trend_vote = -1
+    else:
+        trend_vote = 0
+
+    # ── ШАГ 4: проверка на противоречие RSI vs свеча ─────
+    # Если RSI говорит ВВЕРХ, а свеча ВНИЗ (или наоборот) — пропускаем
+    if rsi_vote != 0 and candle_vote != 0 and rsi_vote != candle_vote:
+        return None, 0, "индикаторы противоречат друг другу — сделка пропущена"
+
+    # ── ШАГ 5: проверка на противоречие тренда и RSI-зоны ─
+    # Если тренд ВНИЗ и RSI уже в зоне перепроданности — не входим на продажу
+    if trend_vote == -1 and rsi_vote == +1:
+        return None, 0, "тренд нисходящий, но RSI в зоне перепроданности — слишком рискованно"
+    # Если тренд ВВЕРХ и RSI уже в зоне перекупленности — не входим на покупку
+    if trend_vote == +1 and rsi_vote == -1:
+        return None, 0, "тренд восходящий, но RSI в зоне перекупленности — слишком рискованно"
+
+    # ── ШАГ 6: итоговый скор ─────────────────────────────
     score = 0
-    reasons = []
+    reasons_call = []  # аргументы за CALL
+    reasons_put  = []  # аргументы за PUT
 
-    if quote["candle_direction"] == "bullish":
+    # Свеча
+    if candle_vote == +1:
         score += 2
-        reasons.append("бычья свеча")
-    elif quote["candle_direction"] == "bearish":
+        reasons_call.append("бычья свеча подтверждает рост")
+    elif candle_vote == -1:
         score -= 2
-        reasons.append("медвежья свеча")
+        reasons_put.append("медвежья свеча подтверждает снижение")
 
-    if quote["change_pct"] > 0.01:
+    # Изменение цены
+    if change_pct > 0.01:
         score += 1
-        reasons.append("позитивная динамика цены")
-    elif quote["change_pct"] < -0.01:
+        reasons_call.append("позитивная динамика цены")
+    elif change_pct < -0.01:
         score -= 1
-        reasons.append("негативная динамика цены")
+        reasons_put.append("негативная динамика цены")
 
-    rsi_str = quote["rsi_signal"]
-    if "перепроданность" in rsi_str:
+    # RSI
+    if rsi_vote == +1:
         score += 2
-        reasons.append(f"RSI в зоне перепроданности — ожидается отскок вверх")
-    elif "перекупленность" in rsi_str:
+        reasons_call.append(f"RSI в зоне перепроданности ({rsi_value:.0f}) — ожидается отскок вверх")
+    elif rsi_vote == -1:
         score -= 2
-        reasons.append(f"RSI в зоне перекупленности — ожидается откат вниз")
+        reasons_put.append(f"RSI в зоне перекупленности ({rsi_value:.0f}) — ожидается откат вниз")
 
-    if "восходящий" in quote.get("trend", ""):
+    # Тренд
+    if trend_vote == +1:
         score += 1
-        reasons.append("восходящий тренд подтверждён")
-    elif "нисходящий" in quote.get("trend", ""):
+        reasons_call.append("восходящий тренд подтверждён")
+    elif trend_vote == -1:
         score -= 1
-        reasons.append("нисходящий тренд подтверждён")
+        reasons_put.append("нисходящий тренд подтверждён")
 
-    score += random.choice([-1, 0, 0, 1])
+    # Небольшая случайная добавка для вариативности (±1)
+    score += random.choice([-1, 0, 0, 0, 1])
 
-    if   score > 0: direction = "ВВЕРХ 🟢 (CALL)"
-    elif score < 0: direction = "ВНИЗ 🔴 (PUT)"
-    else:           direction = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
+    # ── ШАГ 7: применяем RSI-запреты ─────────────────────
+    if score > 0 and rsi_forbids_call:
+        # RSI выше 65, CALL запрещён → пропускаем
+        return None, 0, "RSI в зоне перекупленности — вход на покупку запрещён"
+    if score < 0 and rsi_forbids_put:
+        # RSI ниже 35, PUT запрещён → пропускаем
+        return None, 0, "RSI в зоне перепроданности — вход на продажу запрещён"
+
+    # ── ШАГ 8: если скор нулевой — пропускаем ────────────
+    if score == 0:
+        return None, 0, "индикаторы нейтральны — чёткого сигнала нет"
+
+    # ── ШАГ 9: формируем итог ────────────────────────────
+    if score > 0:
+        direction = "ВВЕРХ 🟢 (CALL)"
+        reason_text = ", ".join(reasons_call[:3]) if reasons_call else "технический анализ"
+    else:
+        direction = "ВНИЗ 🔴 (PUT)"
+        reason_text = ", ".join(reasons_put[:3]) if reasons_put else "технический анализ"
 
     abs_score = abs(score)
     if   abs_score >= 5: confidence = random.randint(93, 97)
@@ -656,7 +735,6 @@ def generate_signal_from_quote(quote: dict) -> tuple[str, int, str]:
     elif abs_score == 2: confidence = random.randint(85, 90)
     else:                confidence = random.randint(82, 87)
 
-    reason_text = ", ".join(reasons[:3]) if reasons else "технический анализ"
     return direction, confidence, reason_text
 
 
@@ -762,6 +840,10 @@ async def auto_signals_scheduler():
 
                         direction, confidence, reason = generate_signal_from_quote(quote)
 
+                        # Пропускаем если direction=None (противоречивые индикаторы)
+                        if direction is None:
+                            continue
+
                         if confidence >= 93 and confidence > best_conf:
                             best_conf   = confidence
                             best_signal = {
@@ -777,7 +859,6 @@ async def auto_signals_scheduler():
                         conf_bar = confidence_bar(s["confidence"])
                         dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in s["direction"] else "🔴 PUT (ВНИЗ)"
 
-                        # Формируем сообщение автосигнала
                         price = s["quote"]["price"]
                         price_str = f"{price:.3f}" if price > 100 else f"{price:.5f}"
 
@@ -1866,16 +1947,6 @@ async def get_signal(message: Message):
         except TelegramBadRequest:
             pass
 
-    db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
-    new_daily = daily + 1
-
-    remaining = current_limit - new_daily
-    limit_warning = ""
-    if remaining == 0:
-        limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
-    elif remaining <= 2:
-        limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
-
     best = PAIR_BEST_TIME.get(data["pair"], {})
     best_time_block = ""
     if best:
@@ -1888,6 +1959,50 @@ async def get_signal(message: Message):
 
     if quote:
         direction, confidence, reason = generate_signal_from_quote(quote)
+
+        # ── Если сигнал пропущен (противоречивые индикаторы) ──
+        if direction is None:
+            try:
+                await progress_msg.delete()
+            except:
+                pass
+
+            price_val = quote["price"]
+            price_str = f"{price_val:.3f}" if price_val > 100 else f"{price_val:.5f}"
+            rsi_bar   = format_rsi_bar(quote.get("rsi_value", 50))
+
+            return await message.answer(
+                f"🧠 <b>СИГНАЛ ПРОПУЩЕН — УМНЫЙ ФИЛЬТР</b>\n"
+                f"━━━━━━━━━━━━━━━━━\n\n"
+                f"  📊 Актив:       <b>{data['pair']}</b>\n"
+                f"  ⏱ Экспирация:  <b>{data['time']}</b>\n"
+                f"  💰 Цена:        <b>{price_str}</b>\n\n"
+                f"📈 <b>RSI-ИНДИКАТОР</b>\n"
+                f"  <code>{rsi_bar}</code>\n"
+                f"  Сигнал: <b>{quote['rsi_signal']}</b>\n\n"
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ <b>ПОЧЕМУ НЕТ СИГНАЛА?</b>\n"
+                f"  <i>{reason.capitalize()}</i>\n\n"
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"🛡 <b>Это защита вашего депозита.</b>\n"
+                f"<i>Терминал не даёт сигнал, когда индикаторы\n"
+                f"противоречат друг другу — лучше пропустить\n"
+                f"сделку, чем войти с заведомо слабым перевесом.\n\n"
+                f"Попробуйте через несколько минут или выберите другую пару.</i>",
+                reply_markup=signal_kb,
+                parse_mode="HTML"
+            )
+
+        # ── Обычный сигнал ─────────────────────────────────
+        db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
+        new_daily = daily + 1
+
+        remaining = current_limit - new_daily
+        limit_warning = ""
+        if remaining == 0:
+            limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
+        elif remaining <= 2:
+            limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
 
         price_val = quote["price"]
         price_str = f"{price_val:.3f}" if price_val > 100 else f"{price_val:.5f}"
@@ -1907,7 +2022,6 @@ async def get_signal(message: Message):
         conf_bar = confidence_bar(confidence)
         dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in direction else "🔴 PUT (ВНИЗ)"
 
-        # ── Блок «Почему вошли?» ─────────────────────────
         reason_block = (
             f"\n━━━━━━━━━━━━━━━━━\n"
             f"💡 <b>ПОЧЕМУ ВОШЛИ?</b>\n"
@@ -1967,7 +2081,19 @@ async def get_signal(message: Message):
             f"{limit_warning}\n"
             f"⚠️ <i>Money Management: 1–3% от баланса на сделку!</i>"
         )
+
     else:
+        # ── Автономный режим (live-данные недоступны) ──────
+        db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
+        new_daily = daily + 1
+
+        remaining = current_limit - new_daily
+        limit_warning = ""
+        if remaining == 0:
+            limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
+        elif remaining <= 2:
+            limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
+
         direction  = random.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
         confidence = random.randint(83, 91)
         conf_bar   = confidence_bar(confidence)
@@ -2029,7 +2155,6 @@ async def profile(message: Message):
     market_str = "🟢 Открыт (ПН–ПТ)" if is_market_open() else "🔴 Закрыт (выходной)"
     name = message.from_user.first_name or "Трейдер"
 
-    # Кнопка калькулятора лота прямо в профиле
     profile_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧮 Рассчитать лот", callback_data="open_lot_calc")],
     ])
