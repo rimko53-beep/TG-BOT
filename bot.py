@@ -63,7 +63,6 @@ times = ["⏱ 3 сек", "⏱ 15 сек", "⏱ 30 сек", "⏱ 1 мин"]
 #         ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ РЫНКА
 # ═══════════════════════════════════════════════
 def is_market_open() -> bool:
-    # Рынок работает ПН–ВС 24/7
     return True
 
 # ════════════════════════════════════════════════
@@ -230,17 +229,8 @@ async def check_invoice(invoice_id):
 
 # ════════════════════════════════════════════════
 #   ГЕНЕРАТОР OTC-СИГНАЛА (автономный режим)
-#
-#   Pocket Option OTC не имеет публичного API.
-#   Сигнал формируется алгоритмом на основе
-#   псевдослучайных технических паттернов,
-#   имитирующих реальный рыночный анализ.
 # ════════════════════════════════════════════════
 def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
-    """
-    Генерирует OTC-сигнал.
-    Возвращает (direction, confidence, reason).
-    """
     now = datetime.utcnow()
 
     if "3 сек" in timeframe:
@@ -249,13 +239,12 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         bucket = int(now.timestamp() / 15)
     elif "30 сек" in timeframe:
         bucket = int(now.timestamp() / 30)
-    else:  # 1 мин
+    else:
         bucket = int(now.timestamp() / 60)
 
     seed = hash(f"{pair}_{bucket}") % (2**32)
     rng = random.Random(seed)
 
-    # ── Блок 1: RSI ──────────────────────────────
     rsi = rng.uniform(25, 75)
     if rsi <= 35:
         rsi_vote = +2
@@ -273,7 +262,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         rsi_vote = rng.choice([-1, 0, 0, +1])
         rsi_desc = f"RSI {rsi:.1f} — нейтральная зона"
 
-    # ── Блок 2: EMA тренд ────────────────────────
     ema_options = [
         (+2, "EMA9×EMA21 — бычий кроссовер"),
         (-2, "EMA9×EMA21 — медвежий кроссовер"),
@@ -283,7 +271,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     ]
     ema_vote, ema_desc = rng.choices(ema_options, weights=[15, 15, 25, 25, 20])[0]
 
-    # ── Блок 3: MACD ─────────────────────────────
     macd_options = [
         (+2, "MACD: бычий разворот гистограммы"),
         (-2, "MACD: медвежий разворот гистограммы"),
@@ -293,7 +280,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     ]
     macd_vote, macd_desc = rng.choices(macd_options, weights=[15, 15, 25, 25, 20])[0]
 
-    # ── Блок 4: Bollinger Bands ───────────────────
     bb_options = [
         (+2, "BB: касание нижней полосы — отскок вверх"),
         (-2, "BB: касание верхней полосы — отскок вниз"),
@@ -303,7 +289,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     ]
     bb_vote, bb_desc = rng.choices(bb_options, weights=[12, 12, 26, 26, 24])[0]
 
-    # ── Блок 5: Stochastic ────────────────────────
     stoch_k = rng.uniform(15, 85)
     if stoch_k <= 20:
         stoch_vote = +2
@@ -321,7 +306,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         stoch_vote = rng.choice([-1, 0, +1])
         stoch_desc = f"Stoch {stoch_k:.1f} — нейтральный"
 
-    # ── Блок 6: Паттерн свечи ────────────────────
     pattern_options = [
         (+1, "бычий пин-бар"),
         (+1, "бычье поглощение"),
@@ -342,12 +326,10 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
 
     if total_score > 0:
         agreeing   = sum(1 for v in votes if v > 0)
-        blocking   = sum(1 for v in votes if v < 0)
         call_reasons = [d for v, d in zip(votes, [rsi_desc, ema_desc, macd_desc, bb_desc, stoch_desc, pattern_desc]) if v > 0]
         reason_text = " | ".join(call_reasons[:4]) if call_reasons else "технический анализ"
     else:
         agreeing   = sum(1 for v in votes if v < 0)
-        blocking   = sum(1 for v in votes if v > 0)
         put_reasons = [d for v, d in zip(votes, [rsi_desc, ema_desc, macd_desc, bb_desc, stoch_desc, pattern_desc]) if v < 0]
         reason_text = " | ".join(put_reasons[:4]) if put_reasons else "технический анализ"
 
@@ -357,7 +339,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         reason_text = "рынок в балансе — слабый технический перекос"
         return direction, confidence, reason_text
 
-    # ── Уверенность ──────────────────────────────
     max_possible = 11
     signal_strength = abs(total_score) / max_possible
     base_confidence = 78 + int(signal_strength * 16)
@@ -480,7 +461,12 @@ user_temp_data   = {}
 pending_users    = set()
 pending_support  = set()
 pending_lot_calc = set()
-last_click_time  = {}
+
+# ════════════════════════════════════════════════
+#   АНТИСПАМ — отдельный словарь, только для
+#   реального дублирования (не мешает первому нажатию)
+# ════════════════════════════════════════════════
+last_signal_request = {}   # uid -> timestamp последней УСПЕШНОЙ отправки сигнала
 
 # ════════════════════════════════════════════════
 #              MIDDLEWARE
@@ -537,7 +523,6 @@ access_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ── Двухколоночная клавиатура выбора OTC-пар ──
 def get_pair_kb():
     rows = []
     pair_list = list(pairs)
@@ -1208,7 +1193,9 @@ async def t_panel(message: Message):
 
 @dp.message(F.text.in_(set(pairs)))
 async def set_pair(message: Message):
-    user_temp_data[message.from_user.id] = {"pair": message.text}
+    uid = message.from_user.id
+    # Сохраняем пару и сбрасываем время, чтобы юзер выбрал заново
+    user_temp_data[uid] = {"pair": message.text}
     mood = get_market_mood(message.text)
 
     await message.answer(
@@ -1222,10 +1209,17 @@ async def set_pair(message: Message):
 @dp.message(F.text.in_(set(times)))
 async def set_time(message: Message):
     uid = message.from_user.id
-    if uid not in user_temp_data:
-        user_temp_data[uid] = {}
+    if uid not in user_temp_data or "pair" not in user_temp_data.get(uid, {}):
+        # Если пара не выбрана — отправляем на выбор пары
+        await message.answer(
+            "⚠️ <b>Сначала выберите валютную пару.</b>\n\n"
+            "Нажмите <b>«📊 Торговая панель»</b>.",
+            parse_mode="HTML"
+        )
+        return
+
     user_temp_data[uid]["time"] = message.text
-    pair = user_temp_data[uid].get('pair', '—')
+    pair = user_temp_data[uid]["pair"]
 
     await message.answer(
         f"⚙️ <b>КОНФИГУРАЦИЯ СОХРАНЕНА</b>\n"
@@ -1248,6 +1242,13 @@ async def get_signal(message: Message):
     u   = db_get_user(uid)
     if not u["has_access"]:
         return
+
+    # ── Антиспам: защита от двойного нажатия (1.5 сек) ──────────────
+    # Срабатывает только если предыдущий сигнал уже был отправлен
+    now_ts = time.time()
+    last_ts = last_signal_request.get(uid, 0)
+    if now_ts - last_ts < 1.5:
+        return  # Молча игнорируем дубль — НЕ тратим лимит
 
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
@@ -1290,20 +1291,32 @@ async def get_signal(message: Message):
                 parse_mode="HTML"
             )
 
-    data = user_temp_data.get(uid)
-    if not data or "pair" not in data:
+    # ── Проверка конфигурации ─────────────────────────────────────────
+    data = user_temp_data.get(uid, {})
+
+    # Если пара не выбрана — просим выбрать
+    if not data.get("pair"):
         return await message.answer(
-            "⚠️ <b>Конфигурация не задана</b>\n\n"
-            "Перейдите в <b>«📊 Торговая панель»</b> и выберите актив и время экспирации.",
+            "⚠️ <b>Актив не выбран!</b>\n\n"
+            "Пожалуйста, нажмите <b>«📊 Торговая панель»</b>,\n"
+            "выберите валютную пару и время экспирации.",
+            reply_markup=get_main_menu(True),
             parse_mode="HTML"
         )
 
-    # ── Антиспам-защита (3 сек между запросами) ──
-    now_ts = time.time()
-    if now_ts - last_click_time.get(uid, 0) < 3:
-        return  # Молча игнорируем — не показываем ошибку, просто ждём
+    # Если время не выбрано — просим выбрать (показываем клавиатуру таймфреймов)
+    if not data.get("time"):
+        await message.answer(
+            f"⚠️ <b>Время экспирации не выбрано!</b>\n\n"
+            f"Актив: <b>{data['pair']}</b>\n\n"
+            f"Выберите <b>время экспирации</b>:",
+            reply_markup=time_kb,
+            parse_mode="HTML"
+        )
+        return
 
-    last_click_time[uid] = now_ts
+    # ── Ставим метку времени ДО отправки прогресс-бара ───────────────
+    last_signal_request[uid] = now_ts
 
     # ── Анимированный прогресс-бар ────────────────────────────────────
     progress_frames = [
@@ -1313,13 +1326,17 @@ async def get_signal(message: Message):
         ("🟩🟩🟩🟩🟩 <b>[100%]</b>", "✅ OTC-сигнал сформирован!"),
     ]
 
-    progress_msg = await message.answer(
-        f"<b>⚡ SMART PRECISION АНАЛИЗ — OTC</b>\n"
-        f"{PREMIUM_DIVIDER}\n\n"
-        f"{progress_frames[0][0]}\n"
-        f"<i>{progress_frames[0][1]}</i>",
-        parse_mode="HTML"
-    )
+    try:
+        progress_msg = await message.answer(
+            f"<b>⚡ SMART PRECISION АНАЛИЗ — OTC</b>\n"
+            f"{PREMIUM_DIVIDER}\n\n"
+            f"{progress_frames[0][0]}\n"
+            f"<i>{progress_frames[0][1]}</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Ошибка отправки прогресс-бара: {e}")
+        return
 
     for bar, label in progress_frames[1:]:
         await asyncio.sleep(0.35)
@@ -1333,8 +1350,10 @@ async def get_signal(message: Message):
             )
         except TelegramBadRequest:
             pass
+        except Exception:
+            pass
 
-    # ── Генерируем OTC-сигнал ────────────────────────────
+    # ── Генерируем OTC-сигнал ─────────────────────────────────────────
     direction, confidence, reason = generate_otc_signal(data["pair"], data["time"])
 
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
@@ -1370,7 +1389,6 @@ async def get_signal(message: Message):
         rng_pro = random.Random(hash(f"{data['pair']}_{direction}_{confidence}"))
         pro_tip = rng_pro.choice(pro_tips)
 
-        # PRO: расширенный анализ сессии
         now_msk = datetime.utcnow() + timedelta(hours=3)
         hour = now_msk.hour
         if 3 <= hour < 10:
@@ -1428,7 +1446,10 @@ async def get_signal(message: Message):
     except Exception:
         pass
 
-    await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
+    try:
+        await message.answer(res, parse_mode="HTML", reply_markup=signal_kb)
+    except Exception as e:
+        print(f"Ошибка отправки сигнала: {e}")
 
 # ════════════════════════════════════════════════
 #              ПРОФИЛЬ
@@ -1456,7 +1477,6 @@ async def profile(message: Message):
     if next_title:
         rank_progress = f"\n  До <b>{next_title}</b>: ещё <b>{signals_left}</b> сигналов"
 
-    # Прогресс-бар ранга
     rank_bar_str = ""
     for lo, hi, title, level in RANKS:
         if lo <= u["signals"] <= hi:
@@ -1540,7 +1560,6 @@ async def stats(message: Message):
     wr_filled = int(win_rate / 10)
     wr_bar    = "█" * wr_filled + "░" * (10 - wr_filled)
 
-    # Мини-графики по часам (имитация активности)
     rng_chart = random.Random(seed_val)
     hourly_bars = ""
     for h in range(6, 24, 3):
