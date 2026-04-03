@@ -33,9 +33,9 @@ dp = Dispatcher()
 #              ПЛАНЫ ПОДПИСОК
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
-    "free":   {"limit": 10,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
-    "junior": {"limit": 25,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
-    "pro":    {"limit": 50,  "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
+    "free":   {"limit": 15,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
+    "junior": {"limit": 50,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
+    "pro":    {"limit": 100, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
 }
 
 # ═══════════════════════════════════════════════
@@ -248,63 +248,63 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     rsi = rng.uniform(25, 75)
     if rsi <= 35:
         rsi_vote = +2
-        rsi_desc = f"RSI {rsi:.1f} — зона перепроданности (CALL)"
+        rsi_desc = f"RSI {rsi:.1f} — перепроданность"
     elif rsi <= 45:
         rsi_vote = +1
         rsi_desc = f"RSI {rsi:.1f} — нижняя зона"
     elif rsi >= 65:
         rsi_vote = -2
-        rsi_desc = f"RSI {rsi:.1f} — зона перекупленности (PUT)"
+        rsi_desc = f"RSI {rsi:.1f} — перекупленность"
     elif rsi >= 55:
         rsi_vote = -1
         rsi_desc = f"RSI {rsi:.1f} — верхняя зона"
     else:
         rsi_vote = rng.choice([-1, 0, 0, +1])
-        rsi_desc = f"RSI {rsi:.1f} — нейтральная зона"
+        rsi_desc = f"RSI {rsi:.1f} — нейтраль"
 
     ema_options = [
-        (+2, "EMA9×EMA21 — бычий кроссовер"),
-        (-2, "EMA9×EMA21 — медвежий кроссовер"),
-        (+1, "EMA9 > EMA21 — восходящий тренд"),
-        (-1, "EMA9 < EMA21 — нисходящий тренд"),
-        (0,  "EMA9 ≈ EMA21 — боковик"),
+        (+2, "EMA — бычий кроссовер"),
+        (-2, "EMA — медвежий кроссовер"),
+        (+1, "EMA — восходящий тренд"),
+        (-1, "EMA — нисходящий тренд"),
+        (0,  "EMA — боковик"),
     ]
     ema_vote, ema_desc = rng.choices(ema_options, weights=[15, 15, 25, 25, 20])[0]
 
     macd_options = [
-        (+2, "MACD: бычий разворот гистограммы"),
-        (-2, "MACD: медвежий разворот гистограммы"),
-        (+1, "MACD гистограмма положительная"),
-        (-1, "MACD гистограмма отрицательная"),
-        (0,  "MACD нейтральный"),
+        (+2, "MACD — бычий разворот"),
+        (-2, "MACD — медвежий разворот"),
+        (+1, "MACD — положительный"),
+        (-1, "MACD — отрицательный"),
+        (0,  "MACD — нейтральный"),
     ]
     macd_vote, macd_desc = rng.choices(macd_options, weights=[15, 15, 25, 25, 20])[0]
 
     bb_options = [
-        (+2, "BB: касание нижней полосы — отскок вверх"),
-        (-2, "BB: касание верхней полосы — отскок вниз"),
-        (+1, "BB: цена в нижней зоне канала"),
-        (-1, "BB: цена в верхней зоне канала"),
-        (0,  "BB: цена в середине канала"),
+        (+2, "BB — отскок от нижней полосы"),
+        (-2, "BB — отскок от верхней полосы"),
+        (+1, "BB — нижняя зона"),
+        (-1, "BB — верхняя зона"),
+        (0,  "BB — середина канала"),
     ]
     bb_vote, bb_desc = rng.choices(bb_options, weights=[12, 12, 26, 26, 24])[0]
 
     stoch_k = rng.uniform(15, 85)
     if stoch_k <= 20:
         stoch_vote = +2
-        stoch_desc = f"Stoch {stoch_k:.1f} — перепроданность (CALL)"
+        stoch_desc = f"Stoch {stoch_k:.0f} — перепроданность"
     elif stoch_k >= 80:
         stoch_vote = -2
-        stoch_desc = f"Stoch {stoch_k:.1f} — перекупленность (PUT)"
+        stoch_desc = f"Stoch {stoch_k:.0f} — перекупленность"
     elif stoch_k < 40:
         stoch_vote = +1
-        stoch_desc = f"Stoch {stoch_k:.1f} — нижняя зона"
+        stoch_desc = f"Stoch {stoch_k:.0f} — нижняя зона"
     elif stoch_k > 60:
         stoch_vote = -1
-        stoch_desc = f"Stoch {stoch_k:.1f} — верхняя зона"
+        stoch_desc = f"Stoch {stoch_k:.0f} — верхняя зона"
     else:
         stoch_vote = rng.choice([-1, 0, +1])
-        stoch_desc = f"Stoch {stoch_k:.1f} — нейтральный"
+        stoch_desc = f"Stoch {stoch_k:.0f} — нейтраль"
 
     pattern_options = [
         (+1, "бычий пин-бар"),
@@ -313,8 +313,8 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         (-1, "медвежий пин-бар"),
         (-1, "медвежье поглощение"),
         (-1, "три чёрных вороны"),
-        (0,  "доджи — неопределённость"),
-        (0,  "нет чёткого паттерна"),
+        (0,  "доджи"),
+        (0,  "нет паттерна"),
     ]
     pattern_vote, pattern_desc = rng.choices(
         pattern_options,
@@ -325,19 +325,14 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     total_score = sum(votes)
 
     if total_score > 0:
-        agreeing   = sum(1 for v in votes if v > 0)
-        call_reasons = [d for v, d in zip(votes, [rsi_desc, ema_desc, macd_desc, bb_desc, stoch_desc, pattern_desc]) if v > 0]
-        reason_text = " | ".join(call_reasons[:4]) if call_reasons else "технический анализ"
+        agreeing = sum(1 for v in votes if v > 0)
     else:
-        agreeing   = sum(1 for v in votes if v < 0)
-        put_reasons = [d for v, d in zip(votes, [rsi_desc, ema_desc, macd_desc, bb_desc, stoch_desc, pattern_desc]) if v < 0]
-        reason_text = " | ".join(put_reasons[:4]) if put_reasons else "технический анализ"
+        agreeing = sum(1 for v in votes if v < 0)
 
     if agreeing < 3 or abs(total_score) < 3:
-        direction  = rng.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
+        direction  = rng.choice(["UP", "DOWN"])
         confidence = rng.randint(78, 82)
-        reason_text = "рынок в балансе — слабый технический перекос"
-        return direction, confidence, reason_text
+        return direction, confidence, None
 
     max_possible = 11
     signal_strength = abs(total_score) / max_possible
@@ -347,12 +342,8 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     confidence += rng.choice([-1, 0, 0, 1])
     confidence = max(78, min(96, confidence))
 
-    if total_score > 0:
-        direction = "ВВЕРХ 🟢 (CALL)"
-    else:
-        direction = "ВНИЗ 🔴 (PUT)"
-
-    return direction, confidence, reason_text
+    direction = "UP" if total_score > 0 else "DOWN"
+    return direction, confidence, None
 
 
 # ════════════════════════════════════════════════
@@ -381,12 +372,6 @@ def get_next_rank(count):
                 return nxt[2], nxt[3], nxt[0] - count
     return None, None, 0
 
-def format_rsi_bar(rsi_value: float) -> str:
-    filled = int(rsi_value / 10)
-    filled = max(0, min(10, filled))
-    bar    = "█" * filled + "░" * (10 - filled)
-    return f"[{bar}] {rsi_value:.0f}"
-
 def confidence_bar(pct: int) -> str:
     filled = int(pct / 10)
     filled = max(0, min(10, filled))
@@ -409,40 +394,6 @@ def calc_lot(balance: float) -> dict:
         "max_risk":     max_risk,
     }
 
-# ════════════════════════════════════════════════
-#         ПРЕМИАЛЬНЫЕ ДЕКОРАТИВНЫЕ УТИЛИТЫ
-# ════════════════════════════════════════════════
-
-MARKET_PULSE_ICONS = ["📡", "🔭", "🧬", "⚙️", "🛰️", "🔬"]
-
-def get_signal_strength_label(confidence: int) -> str:
-    if confidence >= 93:
-        return "🔥 ЭКСТРЕМАЛЬНЫЙ СИГНАЛ"
-    elif confidence >= 88:
-        return "💎 СИЛЬНЫЙ СИГНАЛ"
-    elif confidence >= 84:
-        return "⚡ УСТОЙЧИВЫЙ СИГНАЛ"
-    else:
-        return "📊 СТАНДАРТНЫЙ СИГНАЛ"
-
-def get_market_mood(pair: str) -> str:
-    moods = [
-        "🟢 Бычий импульс",
-        "🔴 Медвежье давление",
-        "🟡 Консолидация",
-        "🔵 Накопление",
-        "🟠 Распределение",
-    ]
-    rng = random.Random(hash(f"{pair}_{datetime.utcnow().strftime('%Y%m%d%H')}"))
-    return rng.choice(moods)
-
-def get_volatility_emoji(pair: str, hour: int) -> str:
-    rng = random.Random(hash(f"{pair}_{hour}"))
-    return rng.choice(["🟢 Низкая", "🟡 Умеренная", "🟠 Средняя", "🔴 Высокая"])
-
-PREMIUM_DIVIDER = "◈━━━━━━━━━━━━━━━━━◈"
-THIN_DIVIDER    = "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
-
 def rank_progress_bar(current: int, lo: int, hi: int) -> str:
     if hi == 9999999:
         return "▓▓▓▓▓▓▓▓▓▓ MAX"
@@ -455,6 +406,12 @@ def rank_progress_bar(current: int, lo: int, hi: int) -> str:
     return f"[{bar}] {int(pct * 100)}%"
 
 # ════════════════════════════════════════════════
+#         ДИЗАЙН-КОНСТАНТЫ
+# ════════════════════════════════════════════════
+DIV  = "─────────────────────"
+SDIV = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
+
+# ════════════════════════════════════════════════
 #              ВРЕМЕННЫЕ ДАННЫЕ
 # ════════════════════════════════════════════════
 user_temp_data   = {}
@@ -462,10 +419,6 @@ pending_users    = set()
 pending_support  = set()
 pending_lot_calc = set()
 
-# ════════════════════════════════════════════════
-#   АНТИСПАМ — отдельный словарь, только для
-#   реального дублирования (не мешает первому нажатию)
-# ════════════════════════════════════════════════
 last_signal_request = {}   # uid -> timestamp последней УСПЕШНОЙ отправки сигнала
 
 # ════════════════════════════════════════════════
@@ -488,9 +441,9 @@ class AccessMiddleware(BaseMiddleware):
                 if text not in allowed:
                     await event.answer(
                         "🔒 <b>ДОСТУП ОГРАНИЧЕН</b>\n"
-                        "━━━━━━━━━━━━━━━━━\n"
-                        "Этот раздел доступен только верифицированным трейдерам.\n\n"
-                        "📌 Нажмите <b>«🔐 Активировать доступ»</b> для получения VIP-лицензии.",
+                        f"{DIV}\n"
+                        "Раздел доступен только верифицированным трейдерам.\n\n"
+                        "Нажмите <b>«🔐 Активировать доступ»</b>",
                         parse_mode="HTML"
                     )
                     return
@@ -575,8 +528,8 @@ def get_sub_kb(current_plan: str = "free"):
 
 def get_upgrade_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 JUNIOR — 25 сигналов/день | 50$", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 PRO — 50 сигналов/день | 100$",   callback_data="buy_pro")],
+        [InlineKeyboardButton(text="🔵 JUNIOR — 50 сигналов/день | 50$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 PRO — 100 сигналов/день | 100$",  callback_data="buy_pro")],
         [InlineKeyboardButton(text="📊 Сравнить тарифы",                  callback_data="compare_plans")],
     ])
 
@@ -604,52 +557,57 @@ async def sub_menu(message: Message):
         days_left = (u['sub_expires'] - datetime.now()).days
         days_used = 7 - days_left
         bar = days_bar(days_used, 7)
-        days_left_str = f"\n  Осталось:    <code>[{bar}]</code> <b>{max(days_left, 0)} дн.</b>"
+        days_left_str = f"\n  Осталось: <code>[{bar}]</code> <b>{max(days_left, 0)} дн.</b>"
 
     renew_block = ""
     if u['sub_type'] != 'free':
         renew_block = (
-            "\n" + PREMIUM_DIVIDER + "\n"
-            "🔄 <b>ПРОДЛЕНИЕ / СМЕНА ТАРИФА:</b>\n"
-            "<i>Продлите подписку заранее — активация мгновенная.\n"
-            "Срок добавится к текущему остатку.</i>\n"
+            f"\n{SDIV}\n"
+            "🔄 <b>Продление / смена тарифа</b>\n"
+            "<i>Срок добавится к текущему остатку.</i>\n"
         )
 
     text = (
-        "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        f"  Ваш тариф:   {emoji} <b>{u['sub_type'].upper()}</b>\n"
-        f"  Лимит:       <b>{limit} сигналов / день</b>\n"
-        f"  Истекает:    <b>{exp_str}</b>"
+        "💎 <b>ПОДПИСКА</b>\n"
+        f"{DIV}\n\n"
+        f"  Тариф:    {emoji} <b>{u['sub_type'].upper()}</b>\n"
+        f"  Лимит:    <b>{limit} сигналов / день</b>\n"
+        f"  Истекает: <b>{exp_str}</b>"
         f"{days_left_str}\n"
         f"{renew_block}"
-        "\n" + PREMIUM_DIVIDER + "\n"
-        "📦 <b>Доступные тарифы:</b>\n\n"
-        "⬜ <b>FREE</b>    — 10 сигналов / день    <i>(бесплатно)</i>\n"
-        "🔵 <b>JUNIOR</b>  — 25 сигналов / день    <i>50$ / 7 дней</i>\n"
-        "🟣 <b>PRO</b>     — 50 сигналов / день    <i>100$ / 7 дней</i>\n\n"
-        "<i>Оплата принимается в <b>USDT</b> через CryptoBot — мгновенно и безопасно.</i>"
+        f"\n{DIV}\n"
+        "📦 <b>Тарифы:</b>\n\n"
+        "⬜ <b>FREE</b>   — 15 сигналов / день  <i>(бесплатно)</i>\n"
+        "🔵 <b>JUNIOR</b> — 50 сигналов / день  <i>50$ / 7 дней</i>\n"
+        "🟣 <b>PRO</b>    — 100 сигналов / день  <i>100$ / 7 дней</i>\n\n"
+        "<i>Оплата в <b>USDT</b> через CryptoBot — мгновенно.</i>"
     )
     await message.answer(text, reply_markup=get_sub_kb(u['sub_type']), parse_mode="HTML")
 
 @dp.callback_query(F.data == "compare_plans")
 async def compare_plans(callback: CallbackQuery):
     text = (
-        "📊 <b>СРАВНЕНИЕ ТАРИФНЫХ ПЛАНОВ</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "<b>Функция               FREE   JUNIOR   PRO</b>\n"
-        "Сигналы в день         10       25        50\n"
-        "OTC-анализ               ✅      ✅        ✅\n"
-        "RSI-анализ                ✅      ✅        ✅\n"
-        "Анализ тренда         ✅      ✅        ✅\n"
-        "Работа поддержки  ❌      ✅        ✅\n"
-        "VIP-уведомления    ❌      ❌        ✅\n"
-        "ТОП Стратегии        ❌      ❌        ✅\n"
-        "Подписка                  ❌      ✅        ✅\n"
-        "Цена                           0$     50$     100$\n"
-        "Срок                           ∞      7 дн    7 дн\n\n"
-        + PREMIUM_DIVIDER + "\n"
-        "<i>Выберите тариф и торгуйте с максимальным перевесом!</i>"
+        "📊 <b>СРАВНЕНИЕ ТАРИФОВ</b>\n"
+        f"{DIV}\n\n"
+        "<b>Функция                FREE  JUNIOR  PRO</b>\n"
+        f"{SDIV}\n"
+        "Сигналов в день         15      50     100\n"
+        "OTC-анализ              ✅      ✅      ✅\n"
+        "6 блоков (RSI/EMA/…)    ✅      ✅      ✅\n"
+        "Уверенность ИИ %        ✅      ✅      ✅\n"
+        "Калькулятор лота        ✅      ✅      ✅\n"
+        "Приоритет поддержки     ❌      ✅      ✅\n"
+        "Расширенная аналитика   ❌      ✅      ✅\n"
+        "Сессия + волатильность  ❌      ✅      ✅\n"
+        "VIP-уведомления         ❌      ❌      ✅\n"
+        "Сила тренда             ❌      ❌      ✅\n"
+        "Рек. объём сделки       ❌      ❌      ✅\n"
+        "ТОП стратегии           ❌      ❌      ✅\n"
+        f"{SDIV}\n"
+        "Цена                    0$     50$    100$\n"
+        "Срок                    ∞     7 дн   7 дн\n\n"
+        f"{DIV}\n"
+        "<i>Больше сигналов = больше возможностей для прибыли</i>"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔵 Купить JUNIOR — 50$", callback_data="buy_junior")],
@@ -680,21 +638,21 @@ async def process_buy(callback: CallbackQuery):
         renew_note = ""
         if is_renew and u['sub_expires']:
             new_exp = u['sub_expires'] + timedelta(days=7)
-            renew_note = f"\n  📅 Новая дата истечения: <b>{new_exp.strftime('%d.%m.%Y')}</b>\n"
+            renew_note = f"\n  📅 Новая дата: <b>{new_exp.strftime('%d.%m.%Y')}</b>\n"
 
         await callback.message.edit_text(
-            f"🧾 <b>СЧЁТ НА {action_word}</b>\n"
-            f"{PREMIUM_DIVIDER}\n\n"
-            f"  Тариф:     {plan['emoji']} <b>{plan['name']}</b>\n"
-            f"  Сумма:     <b>{plan['price']} USDT</b>\n"
-            f"  Срок:      <b>7 дней</b>\n"
-            f"  Лимит:     <b>{plan['limit']} сигналов / день</b>\n"
+            f"🧾 <b>СЧЁТ — {action_word}</b>\n"
+            f"{DIV}\n\n"
+            f"  Тариф:  {plan['emoji']} <b>{plan['name']}</b>\n"
+            f"  Сумма:  <b>{plan['price']} USDT</b>\n"
+            f"  Срок:   <b>7 дней</b>\n"
+            f"  Лимит:  <b>{plan['limit']} сигналов / день</b>\n"
             f"{renew_note}"
-            f"{PREMIUM_DIVIDER}\n"
-            f"1️⃣ Нажмите <b>«💳 Оплатить»</b> — вы попадёте в CryptoBot\n"
+            f"{DIV}\n"
+            f"1️⃣ Нажмите <b>«💳 Оплатить»</b>\n"
             f"2️⃣ Совершите оплату в USDT\n"
-            f"3️⃣ Вернитесь и нажмите <b>«✅ Проверить оплату»</b>\n\n"
-            f"<i>⚡ Активация мгновенная после подтверждения транзакции.</i>",
+            f"3️⃣ Нажмите <b>«✅ Проверить оплату»</b>\n\n"
+            f"<i>⚡ Активация мгновенная после подтверждения.</i>",
             reply_markup=kb,
             parse_mode="HTML"
         )
@@ -719,19 +677,19 @@ async def process_check(callback: CallbackQuery):
         plan = SUBSCRIPTION_PLANS[plan_key]
         await callback.message.edit_text(
             f"🎉 <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b>\n"
-            f"{PREMIUM_DIVIDER}\n\n"
-            f"  Тариф:     {plan['emoji']} <b>{plan_key.upper()}</b>\n"
-            f"  Лимит:     <b>{plan['limit']} сигналов / день</b>\n"
-            f"  Истекает:  <b>{expiry.strftime('%d.%m.%Y %H:%M')}</b>\n\n"
-            f"{PREMIUM_DIVIDER}\n"
-            f"🚀 <b>Терминал полностью активирован!</b>\n"
-            f"<i>Желаем профитных сделок и зелёного депозита! 📈</i>",
+            f"{DIV}\n\n"
+            f"  Тариф:    {plan['emoji']} <b>{plan_key.upper()}</b>\n"
+            f"  Лимит:    <b>{plan['limit']} сигналов / день</b>\n"
+            f"  Истекает: <b>{expiry.strftime('%d.%m.%Y %H:%M')}</b>\n\n"
+            f"{DIV}\n"
+            f"🚀 <b>Терминал активирован!</b>\n"
+            f"<i>Профитных сделок и зелёного депозита! 📈</i>",
             parse_mode="HTML"
         )
         try:
             await bot.send_message(
                 ADMIN_ID,
-                f"💰 <b>НОВАЯ ОПЛАТА ПОДПИСКИ</b>\n"
+                f"💰 <b>НОВАЯ ОПЛАТА</b>\n"
                 f"👤 ID: <code>{callback.from_user.id}</code>\n"
                 f"📦 Тариф: <b>{plan_key.upper()}</b>\n"
                 f"💵 Сумма: <b>{plan['price']} USDT</b>\n"
@@ -753,63 +711,52 @@ async def start(message: Message):
     total_users = db_get_total_users()
 
     start_text = (
-        "┌────────────────────────────┐\n"
-        "│  🖥  AI TRADING TERMINAL     │\n"
-        "│     OTC PRO v4.0  ◈ LIVE   │\n"
-        "└────────────────────────────┘\n\n"
-        "⚡ <b>Профессиональная торговая система</b> для OTC-рынка Pocket Option.\n\n"
-        "🧠 <b>Что умеет терминал:</b>\n"
-        "▸ Анализ 12 OTC-пар с флагами стран\n"
+        "┌─────────────────────────┐\n"
+        "│  🖥  AI TRADING TERMINAL  │\n"
+        "│     OTC PRO v4.0        │\n"
+        "└─────────────────────────┘\n\n"
+        "⚡ <b>Профессиональная система сигналов</b> для OTC-рынка Pocket Option.\n\n"
+        "🧠 <b>Smart Precision Engine:</b>\n"
+        "▸ 12 OTC-пар с флагами стран\n"
         "▸ Таймфреймы: 3с / 15с / 30с / 1 мин\n"
-        "▸ Smart Precision Engine: 6 независимых блоков анализа\n"
-        "▸ RSI(14) + EMA(9/21) + MACD + BB + Stochastic + паттерны\n"
-        "▸ Сигнал с процентом уверенности ИИ (78–96%)\n"
-        "▸ Двухколоночный выбор активов для удобства\n\n"
-        f"👥 Уже торгуют с нами: <b>{total_users + 152:,}</b> трейдеров\n"
-        f"📡 WinRate системы: <b>88–96%</b>\n\n"
-        f"🟢 <b>РЫНОК РАБОТАЕТ: ПН–ВС 24/7</b>\n"
-        f"🕐 {(datetime.utcnow() + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')} (МСК)"
+        "▸ 6 блоков анализа (RSI + EMA + MACD + BB + Stoch + паттерны)\n"
+        "▸ Уверенность ИИ: 78–96%\n\n"
+        f"👥 Трейдеров: <b>{total_users + 152:,}</b>\n"
+        f"📡 WinRate: <b>88–96%</b>  |  🟢 <b>24/7</b>\n"
+        f"🕐 {(datetime.utcnow() + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')} МСК"
     )
     await message.answer(start_text, reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 @dp.message(F.text == "🚀 О боте")
 async def about_bot(message: Message):
-    pairs_list = "\n".join([f"  ▸ <b>{p}</b>" for p in pairs])
+    pairs_list = "\n".join([f"  ▸ {p}" for p in pairs])
 
     text = (
         "🤖 <b>AI TRADING TERMINAL — OTC PRO v4.0</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "📡 <b>Платформа:</b> Pocket Option (OTC-рынок)\n"
-        "🧠 <b>Алгоритм Smart Precision Engine v4:</b>\n"
+        f"{DIV}\n\n"
+        "📡 <b>Платформа:</b> Pocket Option (OTC)\n\n"
+        "🧠 <b>Smart Precision Engine v4:</b>\n"
         "  ▸ RSI(14)\n"
         "  ▸ EMA(9/21) кроссовер + тренд\n"
         "  ▸ MACD(12,26,9)\n"
         "  ▸ Bollinger Bands(20,2)\n"
         "  ▸ Stochastic(14,3)\n"
         "  ▸ Паттерны свечей (8 видов)\n"
-        "🎯 <b>Фильтр входа:</b> минимум 3 из 6 блоков\n\n"
-        + PREMIUM_DIVIDER + "\n"
+        "🎯 <b>Фильтр входа:</b> 3 из 6 блоков\n\n"
+        f"{DIV}\n"
         "💱 <b>OTC ПАРЫ (12 инструментов):</b>\n\n"
         f"{pairs_list}\n\n"
-        + PREMIUM_DIVIDER + "\n"
-        "⏱ <b>ТАЙМФРЕЙМЫ:</b>\n"
-        "  ▸ 3 секунды\n"
-        "  ▸ 15 секунд\n"
-        "  ▸ 30 секунд\n"
-        "  ▸ 1 минута\n\n"
-        + PREMIUM_DIVIDER + "\n"
-        "⏰ <b>РЕЖИМ РАБОТЫ:</b>\n"
-        "  🟢 ПН–ВС: 24/7 (круглосуточно)\n\n"
-        + PREMIUM_DIVIDER + "\n"
+        f"{DIV}\n"
+        "⏱ <b>Таймфреймы:</b> 3с · 15с · 30с · 1 мин\n"
+        "⏰ <b>Режим:</b> ПН–ВС 24/7\n\n"
+        f"{DIV}\n"
         "📦 <b>Тарифы:</b>\n"
-        "  ⬜ FREE   — 10 сигналов / день\n"
-        "  🔵 JUNIOR — 25 сигналов / день  |  50$ / 7 дн\n"
-        "  🟣 PRO    — 50 сигналов / день  |  100$ / 7 дн\n\n"
-        + PREMIUM_DIVIDER + "\n"
-        "⚠️ <b>Дисклеймер:</b>\n"
-        "<i>Торговля бинарными опционами сопряжена с рисками. "
-        "Сигналы носят информационный характер и не являются "
-        "гарантией прибыли. Всегда соблюдайте мани-менеджмент.</i>"
+        "  ⬜ FREE   — 15 сигналов / день\n"
+        "  🔵 JUNIOR — 50 сигналов / день  |  50$ / 7 дн\n"
+        "  🟣 PRO    — 100 сигналов / день  |  100$ / 7 дн\n\n"
+        f"{DIV}\n"
+        "⚠️ <i>Торговля бинарными опционами сопряжена с рисками. "
+        "Сигналы носят информационный характер. Соблюдайте мани-менеджмент.</i>"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -821,9 +768,9 @@ async def lot_calculator(message: Message):
     pending_lot_calc.add(message.from_user.id)
     await message.answer(
         "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "Введите ваш <b>текущий баланс в долларах</b> (только цифры):\n\n"
-        "<i>Пример: 100 или 500 или 1250</i>",
+        f"{DIV}\n\n"
+        "Введите <b>баланс в долларах</b>:\n\n"
+        "<i>Пример: 100 или 500</i>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -846,7 +793,7 @@ async def process_lot_calc(message: Message):
             raise ValueError
     except ValueError:
         return await message.answer(
-            "❌ Введите корректную сумму (только цифры, больше нуля).\n"
+            "❌ Введите корректную сумму (только цифры > 0).\n"
             "<i>Пример: 100</i>",
             parse_mode="HTML"
         )
@@ -855,35 +802,27 @@ async def process_lot_calc(message: Message):
     u = db_get_user(message.from_user.id)
     lot = calc_lot(balance)
 
-    bar_conservative = confidence_bar(10)
-    bar_moderate     = confidence_bar(20)
-    bar_aggressive   = confidence_bar(30)
-    bar_max          = confidence_bar(50)
+    bar_c = confidence_bar(10)
+    bar_m = confidence_bar(20)
+    bar_a = confidence_bar(30)
+    bar_x = confidence_bar(50)
 
     await message.answer(
         f"🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
-        f"{PREMIUM_DIVIDER}\n\n"
-        f"  💰 Ваш баланс: <b>{balance:,.2f}$</b>\n\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"📊 <b>РЕКОМЕНДУЕМЫЕ РАЗМЕРЫ СДЕЛОК:</b>\n\n"
-        f"🟢 <b>Консервативно (1%):</b>\n"
-        f"  <code>{bar_conservative}</code>\n"
-        f"  Сумма: <b>{lot['conservative']:,.2f}$</b> — минимальный риск\n\n"
-        f"🔵 <b>Умеренно (2%):</b>\n"
-        f"  <code>{bar_moderate}</code>\n"
-        f"  Сумма: <b>{lot['moderate']:,.2f}$</b> — оптимально ✅\n\n"
-        f"🟡 <b>Агрессивно (3%):</b>\n"
-        f"  <code>{bar_aggressive}</code>\n"
-        f"  Сумма: <b>{lot['aggressive']:,.2f}$</b> — повышенный риск\n\n"
-        f"🔴 <b>Максимум (5%) — красная зона:</b>\n"
-        f"  <code>{bar_max}</code>\n"
-        f"  Сумма: <b>{lot['max_risk']:,.2f}$</b> — только опытным!\n\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"💡 <b>Рекомендация терминала:</b>\n"
-        f"  Оптимальная сделка: <b>{lot['moderate']:,.2f}$ — {lot['aggressive']:,.2f}$</b>\n"
-        f"  (2–3% от баланса)\n\n"
-        f"<i>Грамотный мани-менеджмент — залог долгой карьеры трейдера.\n"
-        f"Никогда не ставьте более 5% от депозита в одну сделку!</i>",
+        f"{DIV}\n\n"
+        f"  💰 Баланс: <b>{balance:,.2f}$</b>\n\n"
+        f"{DIV}\n"
+        f"🟢 <b>Консервативно (1%)</b>\n"
+        f"  <code>{bar_c}</code>  <b>{lot['conservative']:,.2f}$</b>\n\n"
+        f"🔵 <b>Умеренно (2%)</b> — оптимально ✅\n"
+        f"  <code>{bar_m}</code>  <b>{lot['moderate']:,.2f}$</b>\n\n"
+        f"🟡 <b>Агрессивно (3%)</b>\n"
+        f"  <code>{bar_a}</code>  <b>{lot['aggressive']:,.2f}$</b>\n\n"
+        f"🔴 <b>Максимум (5%)</b> — красная зона\n"
+        f"  <code>{bar_x}</code>  <b>{lot['max_risk']:,.2f}$</b>\n\n"
+        f"{DIV}\n"
+        f"💡 Оптимум: <b>{lot['moderate']:,.2f}$ – {lot['aggressive']:,.2f}$</b>\n"
+        f"<i>Никогда не рискуйте более 5% в одной сделке!</i>",
         reply_markup=get_main_menu(u["has_access"]),
         parse_mode="HTML"
     )
@@ -898,26 +837,24 @@ async def activate(message: Message):
     if user_info["has_access"]:
         return await message.answer(
             "✅ <b>VIP-ЛИЦЕНЗИЯ АКТИВНА</b>\n"
-            + PREMIUM_DIVIDER + "\n"
-            "Все модули терминала разблокированы.\n"
-            "Вам доступны профессиональные сигналы в полном объёме.",
+            f"{DIV}\n"
+            "Все модули терминала разблокированы.",
             parse_mode="HTML"
         )
     await message.answer(
         "💎 <b>АКТИВАЦИЯ VIP-ЛИЦЕНЗИИ</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "📋 <b>Инструкция (3 простых шага):</b>\n\n"
-        "1️⃣ <b>Регистрация торгового счёта:</b>\n"
+        f"{DIV}\n\n"
+        "📋 <b>3 простых шага:</b>\n\n"
+        "1️⃣ <b>Регистрация счёта:</b>\n"
         "   🌍 Global: <a href='https://u3.shortink.io/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1746882&ac=fx&cid=950203&code=ESX408'>Pocket Option (Официальный шлюз)</a>\n"
         "   🇷🇺 RU/СНГ: <a href='https://po-ru4.click/register?utm_campaign=840876&utm_source=affiliate&utm_medium=sr&a=MystmHLdGn4JJU&al=1746882&ac=fx&cid=950203&code=ESX408'>Pocket Option (Зеркало)</a>\n\n"
-        "2️⃣ <b>Пополните депозит</b> от <b>$50</b>\n"
-        "   <i>(рекомендуемый риск: 1–5% на сделку)</i>\n\n"
-        "3️⃣ <b>Отправьте ваш ID</b> нажав кнопку ниже\n\n"
-        + PREMIUM_DIVIDER + "\n"
-        "🎁 <b>БОНУС +60% к депозиту</b> при регистрации по ссылке выше!\n\n"
-        "⚠️ <b>Важно:</b> если аккаунт уже существует — он должен быть зарегистрирован "
-        "по нашей ссылке. Иначе необходимо создать новый аккаунт строго по ссылке выше.\n\n"
-        "🔐 <i>После проверки ИИ подключит ваш аккаунт к пулу сигналов в течение нескольких минут.</i>",
+        "2️⃣ <b>Пополните депозит</b> от <b>$50</b>\n\n"
+        "3️⃣ <b>Отправьте ваш ID</b> кнопкой ниже\n\n"
+        f"{DIV}\n"
+        "🎁 <b>+60% бонус</b> к депозиту при регистрации по ссылке!\n\n"
+        "⚠️ <b>Важно:</b> аккаунт должен быть зарегистрирован по нашей ссылке. "
+        "Иначе создайте новый строго по ссылке выше.\n\n"
+        "🔐 <i>Активация в течение нескольких минут после проверки.</i>",
         reply_markup=access_kb,
         parse_mode="HTML",
         disable_web_page_preview=True
@@ -928,16 +865,15 @@ async def activate(message: Message):
 async def help_cmd(message: Message):
     pending_support.add(message.from_user.id)
     await message.answer(
-        "🆘 <b>ЦЕНТР ПОДДЕРЖКИ</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "Если у вас возникли вопросы — опишите проблему одним сообщением.\n"
-        "Ваше обращение будет мгновенно передано администратору.\n\n"
-        "💬 <b>Частые вопросы:</b>\n"
-        "▸ <i>Как активировать доступ?</i> → кнопка «🔐 Активировать доступ»\n"
-        "▸ <i>Как найти ID Pocket Option?</i> → Личный кабинет → Профиль\n"
-        "▸ <i>Когда обновляется лимит?</i> → Каждый день в 00:00 (МСК)\n"
-        "▸ <i>Когда работает терминал?</i> → ПН–ВС 24/7\n\n"
-        "✍️ <b>Напишите ваш вопрос прямо сейчас:</b>",
+        "🆘 <b>ПОДДЕРЖКА</b>\n"
+        f"{DIV}\n\n"
+        "Опишите проблему одним сообщением — передадим администратору.\n\n"
+        "💬 <b>FAQ:</b>\n"
+        "▸ Активация → «🔐 Активировать доступ»\n"
+        "▸ ID Pocket Option → Личный кабинет → Профиль\n"
+        "▸ Лимит сигналов сбрасывается в 00:00 МСК\n"
+        "▸ Терминал работает 24/7\n\n"
+        "✍️ <b>Напишите ваш вопрос:</b>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -947,11 +883,10 @@ async def ask_id(message: Message):
     pending_users.add(message.from_user.id)
     await message.answer(
         "🔢 <b>ВЕРИФИКАЦИЯ АККАУНТА</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "Введите ваш <b>цифровой ID профиля Pocket Option</b>:\n\n"
-        "📍 <i>Где найти ID:</i>\n"
-        "Зайдите в Pocket Option → Аккаунт → ваш ID указан в профиле.\n\n"
-        "⌨️ <b>Введите только цифры, без пробелов:</b>",
+        f"{DIV}\n\n"
+        "Введите <b>цифровой ID профиля Pocket Option</b>:\n\n"
+        "📍 <i>Где найти: Pocket Option → Аккаунт → Профиль</i>\n\n"
+        "⌨️ <b>Только цифры:</b>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -964,8 +899,7 @@ async def go_back(message: Message):
     pending_lot_calc.discard(message.from_user.id)
     u = db_get_user(message.from_user.id)
     await message.answer(
-        f"🏠 <b>Главная панель управления</b>\n"
-        f"<i>С возвращением, {message.from_user.first_name}!</i>",
+        f"🏠 <b>Главная</b> · <i>{message.from_user.first_name}</i>",
         reply_markup=get_main_menu(u["has_access"]),
         parse_mode="HTML"
     )
@@ -993,8 +927,7 @@ async def process_support_message(message: Message):
     u = db_get_user(uid)
     await message.answer(
         "✅ <b>Обращение принято!</b>\n"
-        "Администратор рассмотрит ваш запрос в ближайшее время.\n\n"
-        "<i>Обычно время ответа — до 30 минут.</i>",
+        "Ответим в течение 30 минут.",
         reply_markup=get_main_menu(u["has_access"]),
         parse_mode="HTML"
     )
@@ -1006,8 +939,7 @@ async def process_id(message: Message):
         return await go_back(message)
     if not message.text or not message.text.isdigit():
         return await message.answer(
-            "❌ <b>Ошибка валидации.</b>\n"
-            "Введите <b>только цифры</b> вашего ID Pocket Option.\n"
+            "❌ <b>Ошибка.</b> Введите <b>только цифры</b>.\n"
             "<i>Пример: 12345678</i>",
             parse_mode="HTML"
         )
@@ -1028,10 +960,9 @@ async def process_id(message: Message):
     u = db_get_user(uid)
     await message.answer(
         "⏳ <b>ЗАЯВКА ОТПРАВЛЕНА</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        f"🆔 Ваш ID Pocket Option: <code>{message.text}</code>\n\n"
-        "Ожидайте проверки от технического отдела.\n"
-        "<i>Обычно активация происходит в течение нескольких минут.</i>",
+        f"{DIV}\n\n"
+        f"🆔 ID Pocket Option: <code>{message.text}</code>\n\n"
+        "Ожидайте проверки. Активация — несколько минут.",
         reply_markup=get_main_menu(u["has_access"]),
         parse_mode="HTML"
     )
@@ -1049,12 +980,11 @@ async def admin_give(message: Message):
         await bot.send_message(
             target,
             "🚀 <b>VIP-ДОСТУП АКТИВИРОВАН!</b>\n"
-            + PREMIUM_DIVIDER + "\n\n"
-            "✅ Ваш аккаунт верифицирован.\n"
-            "Все модули терминала разблокированы.\n\n"
-            "📊 Нажмите <b>«📊 Торговая панель»</b> для выбора актива\n"
+            f"{DIV}\n\n"
+            "✅ Аккаунт верифицирован. Все модули разблокированы.\n\n"
+            "📊 Нажмите <b>«📊 Торговая панель»</b>\n"
             "⚡ Или сразу <b>«⚡ Получить сигнал»</b>\n\n"
-            "<i>Желаем профитных сделок! 📈</i>",
+            "<i>Профитных сделок! 📈</i>",
             parse_mode="HTML",
             reply_markup=get_main_menu(True)
         )
@@ -1073,9 +1003,9 @@ async def admin_block(message: Message):
             await bot.send_message(
                 target,
                 "🛑 <b>ДОСТУП АННУЛИРОВАН</b>\n"
-                + PREMIUM_DIVIDER + "\n\n"
-                "Ваша VIP-лицензия была отозвана администратором.\n\n"
-                "Если вы считаете это ошибкой — обратитесь в поддержку: /help",
+                f"{DIV}\n\n"
+                "VIP-лицензия отозвана администратором.\n"
+                "Обратитесь в поддержку: /help",
                 parse_mode="HTML",
                 reply_markup=get_main_menu(False)
             )
@@ -1096,7 +1026,7 @@ async def admin_reply(message: Message):
         await bot.send_message(
             target,
             f"💬 <b>ОТВЕТ ПОДДЕРЖКИ</b>\n"
-            f"{PREMIUM_DIVIDER}\n\n"
+            f"{DIV}\n\n"
             f"{text}",
             parse_mode="HTML"
         )
@@ -1113,9 +1043,9 @@ async def admin_stats(message: Message):
     await message.answer(
         f"📊 <b>СТАТИСТИКА БОТА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n"
-        f"👥 Всего пользователей: <b>{total}</b>\n"
+        f"👥 Всего: <b>{total}</b>\n"
         f"🟢 Активных (24ч): <b>{active}</b>\n"
-        f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}",
         parse_mode="HTML"
     )
 
@@ -1171,22 +1101,20 @@ async def t_panel(message: Message):
     now_msk = datetime.utcnow() + timedelta(hours=3)
     hour = now_msk.hour
     if 3 <= hour < 10:
-        session_info = "🌏 Азиатская сессия — умеренная волатильность"
+        session_info = "🌏 Азиатская · умеренная волатильность"
     elif 10 <= hour < 18:
-        session_info = "🌍 Европейская сессия — высокая ликвидность"
+        session_info = "🌍 Европейская · высокая ликвидность"
     elif 18 <= hour < 23:
-        session_info = "🌎 Американская сессия — максимальный объём"
+        session_info = "🌎 Американская · максимальный объём"
     else:
-        session_info = "🌙 Ночная сессия — осторожно, низкий объём"
+        session_info = "🌙 Ночная · осторожно, низкий объём"
 
     await message.answer(
-        "📊 <b>ТОРГОВАЯ ПАНЕЛЬ — OTC РЫНОК</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
+        "📊 <b>ТОРГОВАЯ ПАНЕЛЬ</b>\n"
+        f"{DIV}\n\n"
         f"  📡 {session_info}\n"
-        f"  🕐 {now_msk.strftime('%H:%M')} МСК\n\n"
-        "Выберите <b>OTC-пару</b> для анализа:\n\n"
-        "🌍 Доступно 12 валютных инструментов\n"
-        "⚡ Таймфреймы: 3с | 15с | 30с | 1 мин",
+        f"  🕐 {now_msk.strftime('%H:%M')} МСК · 12 OTC-пар\n\n"
+        "Выберите <b>валютную пару:</b>",
         reply_markup=pair_kb,
         parse_mode="HTML"
     )
@@ -1194,14 +1122,11 @@ async def t_panel(message: Message):
 @dp.message(F.text.in_(set(pairs)))
 async def set_pair(message: Message):
     uid = message.from_user.id
-    # Сохраняем пару и сбрасываем время, чтобы юзер выбрал заново
     user_temp_data[uid] = {"pair": message.text}
-    mood = get_market_mood(message.text)
 
     await message.answer(
-        f"✅ <b>Актив выбран:</b> {message.text}\n"
-        f"   Настроение рынка: {mood}\n\n"
-        f"⏱ Выберите <b>время экспирации</b>:",
+        f"✅ <b>{message.text}</b>\n\n"
+        f"⏱ Выберите <b>время экспирации:</b>",
         reply_markup=time_kb,
         parse_mode="HTML"
     )
@@ -1210,9 +1135,8 @@ async def set_pair(message: Message):
 async def set_time(message: Message):
     uid = message.from_user.id
     if uid not in user_temp_data or "pair" not in user_temp_data.get(uid, {}):
-        # Если пара не выбрана — отправляем на выбор пары
         await message.answer(
-            "⚠️ <b>Сначала выберите валютную пару.</b>\n\n"
+            "⚠️ Сначала выберите пару.\n"
             "Нажмите <b>«📊 Торговая панель»</b>.",
             parse_mode="HTML"
         )
@@ -1222,18 +1146,17 @@ async def set_time(message: Message):
     pair = user_temp_data[uid]["pair"]
 
     await message.answer(
-        f"⚙️ <b>КОНФИГУРАЦИЯ СОХРАНЕНА</b>\n"
-        f"{PREMIUM_DIVIDER}\n\n"
-        f"  📊 Актив:       <b>{pair}</b>\n"
-        f"  ⏱ Экспирация:  <b>{message.text}</b>\n"
-        f"\n{PREMIUM_DIVIDER}\n"
-        f"<i>Алгоритм настроен. Нажмите «⚡ Получить сигнал» для анализа рынка.</i>",
+        f"⚙️ <b>ГОТОВО</b>\n"
+        f"{DIV}\n\n"
+        f"  Пара:      <b>{pair}</b>\n"
+        f"  Экспирация: <b>{message.text}</b>\n\n"
+        f"<i>Нажмите «⚡ Получить сигнал»</i>",
         reply_markup=signal_kb,
         parse_mode="HTML"
     )
 
 # ════════════════════════════════════════════════
-#              ГЛАВНЫЙ ХЕНДЛЕР СИГНАЛА
+#     ГЛАВНЫЙ ХЕНДЛЕР СИГНАЛА — НОВЫЙ ДИЗАЙН
 # ════════════════════════════════════════════════
 @dp.message(Command("signals"))
 @dp.message(F.text == "⚡ Получить сигнал")
@@ -1243,12 +1166,11 @@ async def get_signal(message: Message):
     if not u["has_access"]:
         return
 
-    # ── Антиспам: защита от двойного нажатия (1.5 сек) ──────────────
-    # Срабатывает только если предыдущий сигнал уже был отправлен
+    # Антиспам
     now_ts = time.time()
     last_ts = last_signal_request.get(uid, 0)
     if now_ts - last_ts < 1.5:
-        return  # Молча игнорируем дубль — НЕ тратим лимит
+        return
 
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
@@ -1264,183 +1186,179 @@ async def get_signal(message: Message):
         if sub_type == "free":
             return await message.answer(
                 "🛑 <b>ДНЕВНОЙ ЛИМИТ ИСЧЕРПАН</b>\n"
-                + PREMIUM_DIVIDER + "\n\n"
-                f"Вы использовали все <b>{current_limit} бесплатных сигнала</b> на сегодня.\n\n"
-                "💡 <b>Хотите торговать без ограничений?</b>\n"
-                "Перейдите в раздел <b>«💎 Подписка»</b> и получите\n"
-                "больше сигналов по супер цене:\n\n"
-                "🔵 <b>JUNIOR</b> — <b>25 сигналов/день</b> всего за <b>50$</b> / 7 дней\n"
-                "🟣 <b>PRO</b>    — <b>50 сигналов/день</b> всего за <b>100$</b> / 7 дней\n\n"
-                "⏳ <i>Или дождитесь обновления лимита в 00:00 (МСК).</i>",
+                f"{DIV}\n\n"
+                f"Использовано <b>{current_limit} / {current_limit}</b> бесплатных сигналов.\n\n"
+                "💡 Получите больше сигналов с подпиской:\n\n"
+                "🔵 <b>JUNIOR</b> — <b>50 сигналов/день</b>  |  <b>50$</b>\n"
+                "🟣 <b>PRO</b>    — <b>100 сигналов/день</b>  |  <b>100$</b>\n\n"
+                "⏳ <i>Или ждите сброса в 00:00 МСК</i>",
                 reply_markup=get_upgrade_kb(),
                 parse_mode="HTML"
             )
         else:
             return await message.answer(
-                "🛑 <b>ДНЕВНОЙ ЛИМИТ ИСЧЕРПАН</b>\n"
-                + PREMIUM_DIVIDER + "\n\n"
-                f"Тариф <b>{sub_type.upper()}</b>: использовано <b>{daily} / {current_limit}</b> сигналов.\n\n"
-                "🔐 <b>Система защиты капитала активирована</b>\n"
-                "<i>Лимит защищает от эмоциональной торговли и "
-                "чрезмерных рисков. Возвращайтесь завтра с чистой головой!</i>\n\n"
-                "💡 <b>Хотите ещё больше сигналов?</b>\n"
-                "Перейдите в <b>«💎 Подписка»</b> — там доступно продление\n"
-                "или переход на более высокий тариф.\n\n"
-                "⏳ Обновление в <b>00:00 (МСК)</b>",
+                "🛑 <b>ЛИМИТ ИСЧЕРПАН</b>\n"
+                f"{DIV}\n\n"
+                f"Тариф <b>{sub_type.upper()}</b>: <b>{daily} / {current_limit}</b> сигналов.\n\n"
+                "Лимит защищает от эмоциональной торговли.\n"
+                "Возвращайтесь завтра — сброс в <b>00:00 МСК</b>.\n\n"
+                "💡 Хотите больше? Смените тариф в <b>«💎 Подписка»</b>",
                 reply_markup=get_upgrade_kb(),
                 parse_mode="HTML"
             )
 
-    # ── Проверка конфигурации ─────────────────────────────────────────
+    # Проверка конфигурации
     data = user_temp_data.get(uid, {})
 
-    # Если пара не выбрана — просим выбрать
     if not data.get("pair"):
         return await message.answer(
-            "⚠️ <b>Актив не выбран!</b>\n\n"
-            "Пожалуйста, нажмите <b>«📊 Торговая панель»</b>,\n"
-            "выберите валютную пару и время экспирации.",
+            "⚠️ <b>Пара не выбрана!</b>\n\n"
+            "Нажмите <b>«📊 Торговая панель»</b>,\n"
+            "выберите пару и время экспирации.",
             reply_markup=get_main_menu(True),
             parse_mode="HTML"
         )
 
-    # Если время не выбрано — просим выбрать (показываем клавиатуру таймфреймов)
     if not data.get("time"):
         await message.answer(
-            f"⚠️ <b>Время экспирации не выбрано!</b>\n\n"
-            f"Актив: <b>{data['pair']}</b>\n\n"
-            f"Выберите <b>время экспирации</b>:",
+            f"⚠️ <b>Время не выбрано!</b>\n\n"
+            f"Пара: <b>{data['pair']}</b>\n\n"
+            f"Выберите <b>экспирацию:</b>",
             reply_markup=time_kb,
             parse_mode="HTML"
         )
         return
 
-    # ── Ставим метку времени ДО отправки прогресс-бара ───────────────
     last_signal_request[uid] = now_ts
 
-    # ── Анимированный прогресс-бар ────────────────────────────────────
+    # Анимированный прогресс-бар
     progress_frames = [
-        ("⬛️⬛️⬛️⬛️⬛️ <b>[ 0%]</b>",  "📡 Подключение к OTC-терминалу..."),
-        ("🟩🟩⬛️⬛️⬛️ <b>[40%]</b>",  "📊 RSI + EMA + MACD анализ..."),
-        ("🟩🟩🟩🟩⬛️ <b>[80%]</b>",  "🔬 BB + Stoch + паттерны..."),
-        ("🟩🟩🟩🟩🟩 <b>[100%]</b>", "✅ OTC-сигнал сформирован!"),
+        ("⬛⬛⬛⬛⬛  0%",   "Подключение к терминалу..."),
+        ("🟩🟩⬛⬛⬛  40%",  "RSI · EMA · MACD..."),
+        ("🟩🟩🟩🟩⬛  80%",  "BB · Stoch · паттерны..."),
+        ("🟩🟩🟩🟩🟩  100%", "Сигнал сформирован ✅"),
     ]
 
     try:
         progress_msg = await message.answer(
-            f"<b>⚡ SMART PRECISION АНАЛИЗ — OTC</b>\n"
-            f"{PREMIUM_DIVIDER}\n\n"
-            f"{progress_frames[0][0]}\n"
+            f"<b>⚡ АНАЛИЗ РЫНКА</b>\n"
+            f"{DIV}\n\n"
+            f"<code>{progress_frames[0][0]}</code>\n"
             f"<i>{progress_frames[0][1]}</i>",
             parse_mode="HTML"
         )
     except Exception as e:
-        print(f"Ошибка отправки прогресс-бара: {e}")
+        print(f"Ошибка прогресс-бара: {e}")
         return
 
     for bar, label in progress_frames[1:]:
         await asyncio.sleep(0.35)
         try:
             await progress_msg.edit_text(
-                f"<b>⚡ SMART PRECISION АНАЛИЗ — OTC</b>\n"
-                f"{PREMIUM_DIVIDER}\n\n"
-                f"{bar}\n"
+                f"<b>⚡ АНАЛИЗ РЫНКА</b>\n"
+                f"{DIV}\n\n"
+                f"<code>{bar}</code>\n"
                 f"<i>{label}</i>",
                 parse_mode="HTML"
             )
-        except TelegramBadRequest:
-            pass
-        except Exception:
+        except (TelegramBadRequest, Exception):
             pass
 
-    # ── Генерируем OTC-сигнал ─────────────────────────────────────────
-    direction, confidence, reason = generate_otc_signal(data["pair"], data["time"])
+    # Генерация сигнала
+    direction, confidence, _ = generate_otc_signal(data["pair"], data["time"])
 
     db_update_user(uid, signals=u["signals"] + 1, daily=daily + 1, date=today)
     new_daily = daily + 1
-
     remaining = current_limit - new_daily
-    limit_warning = ""
+
+    # ── НОВЫЙ КОМПАКТНЫЙ ДИЗАЙН СИГНАЛА ─────────────────────────────
+    is_up = direction == "UP"
+
+    if is_up:
+        dir_line   = "▲  ВВЕРХ  ·  CALL"
+        dir_emoji  = "🟢"
+    else:
+        dir_line   = "▼  ВНИЗ   ·  PUT"
+        dir_emoji  = "🔴"
+
+    # Уверенность
+    conf_bar = confidence_bar(confidence)
+
+    if confidence >= 93:
+        conf_label = "🔥 Экстремальный"
+    elif confidence >= 88:
+        conf_label = "💎 Сильный"
+    elif confidence >= 84:
+        conf_label = "⚡ Устойчивый"
+    else:
+        conf_label = "📊 Стандартный"
+
+    # Лимит
     if remaining == 0:
-        limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
+        limit_line = f"<b>⚠️ Последний сигнал на сегодня!</b>"
     elif remaining <= 3:
-        limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
+        limit_line = f"<i>Осталось: <b>{remaining}</b> сигналов</i>"
+    else:
+        limit_line = f"<i>{new_daily} / {current_limit} · осталось {remaining}</i>"
 
-    conf_bar  = confidence_bar(confidence)
-    dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in direction else "🔴 PUT (ВНИЗ)"
-    strength_label = get_signal_strength_label(confidence)
-
-    reason_block = (
-        f"\n{THIN_DIVIDER}\n"
-        f"💡 <b>КЛЮЧЕВЫЕ ФАКТОРЫ ВХОДА:</b>\n"
-        f"  <i>{reason.capitalize()}</i>\n"
-    )
-
-    # PRO-блок с расширенной аналитикой
+    # PRO-блок
     pro_block = ""
-    if sub_type == "pro":
-        pro_tips = [
-            "✅ Стандартные условия — работайте по алгоритму",
-            "💡 Высокая уверенность — стандартный объём",
-            "⚠️ Умеренный сигнал — рекомендуем 1–2% от депозита",
-            "🔥 Сильный перекос — хорошая точка входа",
-            "📐 Контртрендовый сигнал — повышенная осторожность",
-        ]
-        rng_pro = random.Random(hash(f"{data['pair']}_{direction}_{confidence}"))
-        pro_tip = rng_pro.choice(pro_tips)
-
+    if sub_type in ("junior", "pro"):
         now_msk = datetime.utcnow() + timedelta(hours=3)
         hour = now_msk.hour
         if 3 <= hour < 10:
-            session = "🌏 Азиатская сессия"
+            session = "🌏 Азиатская"
         elif 10 <= hour < 18:
-            session = "🌍 Европейская сессия"
+            session = "🌍 Европейская"
         elif 18 <= hour < 23:
-            session = "🌎 Американская сессия"
+            session = "🌎 Американская"
         else:
-            session = "🌙 Ночная сессия"
+            session = "🌙 Ночная"
 
-        volatility_levels = ["🟢 Низкая", "🟡 Умеренная", "🟠 Средняя", "🔴 Высокая"]
+        volatility_opts = ["🟢 Низкая", "🟡 Умеренная", "🟠 Средняя", "🔴 Высокая"]
         rng_vol = random.Random(hash(f"{data['pair']}_{confidence}_{hour}"))
-        volatility = rng_vol.choice(volatility_levels)
-
-        trend_strength = rng_pro.randint(55, 95)
-        trend_bar = confidence_bar(trend_strength)
+        volatility = rng_vol.choice(volatility_opts)
 
         pro_block = (
-            f"\n{THIN_DIVIDER}\n"
-            f"🟣 <b>PRO РАСШИРЕННАЯ АНАЛИТИКА:</b>\n"
-            f"  📡 Сессия:        <b>{session}</b>\n"
+            f"\n{SDIV}\n"
+            f"  📡 Сессия:       <b>{session}</b>\n"
             f"  📊 Волатильность: <b>{volatility}</b>\n"
-            f"  💪 Сила тренда:   <code>{trend_bar}</code> <b>{trend_strength}%</b>\n"
-            f"  💬 Совет:         {pro_tip}\n"
-            f"  📐 Рек. объём:    <b>2–3% от депозита</b>\n"
-            f"  🎯 Уверенность:   <b>{confidence}%</b>\n"
-            f"  ⏱ Экспирация:    <b>{data['time']}</b>\n"
+        )
+
+    # PRO расширенный блок
+    pro_extra = ""
+    if sub_type == "pro":
+        rng_pro = random.Random(hash(f"{data['pair']}_{direction}_{confidence}"))
+        trend_strength = rng_pro.randint(55, 95)
+        trend_bar = confidence_bar(trend_strength)
+        pro_tips = [
+            "Стандартные условия — работайте по алгоритму",
+            "Высокая уверенность — стандартный объём",
+            "Умеренный сигнал — рекомендуем 1–2% депозита",
+            "Сильный перекос — хорошая точка входа",
+            "Контртренд — повышенная осторожность",
+        ]
+        pro_tip = rng_pro.choice(pro_tips)
+        pro_extra = (
+            f"  💪 Тренд: <code>{trend_bar}</code> <b>{trend_strength}%</b>\n"
+            f"  💬 <i>{pro_tip}</i>\n"
         )
 
     res = (
-        f"⚡️ <b>OTC SMART PRECISION СИГНАЛ</b> ⚡️\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"  📊 Актив:       <b>{data['pair']}</b>\n"
-        f"  ⏱ Экспирация:  <b>{data['time']}</b>\n"
-        f"{THIN_DIVIDER}\n"
-        f"🧠 <b>УВЕРЕННОСТЬ ИИ (6 блоков):</b>\n"
-        f"  <code>{conf_bar}</code> <b>{confidence}%</b>\n"
-        f"  {strength_label}\n\n"
-        f"🚀 <b>РЕКОМЕНДАЦИЯ:</b>\n"
-        f"  ┌──────────────────────┐\n"
-        f"  │   {dir_badge}      │\n"
-        f"  └──────────────────────┘\n"
-        f"{reason_block}"
+        f"{dir_emoji} <b>{dir_line}</b> {dir_emoji}\n"
+        f"{DIV}\n"
+        f"  {data['pair']}\n"
+        f"  Экспирация: <b>{data['time']}</b>\n"
+        f"{SDIV}\n"
+        f"  ИИ: <code>{conf_bar}</code> <b>{confidence}%</b>\n"
+        f"  {conf_label}"
         f"{pro_block}"
-        f"{THIN_DIVIDER}\n"
-        f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
-        f"{limit_warning}\n"
-        f"⚠️ <i>Money Management: 1–3% от баланса на сделку!</i>"
+        f"{pro_extra}"
+        f"\n{SDIV}\n"
+        f"  {limit_line}\n"
+        f"<i>⚡ 1–3% от баланса на сделку</i>"
     )
 
-    # ── Удаляем прогресс-бар и отправляем сигнал ─────────────────────
     try:
         await progress_msg.delete()
     except Exception:
@@ -1470,7 +1388,7 @@ async def profile(message: Message):
         days_left  = max((u['sub_expires'] - datetime.now()).days, 0)
         days_used  = 7 - days_left
         bar        = days_bar(days_used, 7)
-        days_info  = f"\n  Осталось:  <code>[{bar}]</code> <b>{days_left} дн.</b>"
+        days_info  = f"\n  Осталось: <code>[{bar}]</code> <b>{days_left} дн.</b>"
 
     next_title, next_level, signals_left = get_next_rank(u["signals"])
     rank_progress = ""
@@ -1493,30 +1411,25 @@ async def profile(message: Message):
     ])
 
     await message.answer(
-        f"👤 <b>ПРОФИЛЬ ТРЕЙДЕРА</b>\n"
-        f"{PREMIUM_DIVIDER}\n\n"
-        f"  Имя:       <b>{name}</b>\n"
-        f"  TG ID:     <code>{message.from_user.id}</code>\n\n"
-        f"{THIN_DIVIDER}\n"
-        f"🏆 <b>РАНГ:</b>\n"
-        f"  {rank}\n"
-        f"  Прогресс: <code>{rank_bar_str}</code>"
+        f"👤 <b>ПРОФИЛЬ</b>\n"
+        f"{DIV}\n\n"
+        f"  {name}  ·  <code>{message.from_user.id}</code>\n\n"
+        f"{SDIV}\n"
+        f"🏆 <b>Ранг:</b> {rank}\n"
+        f"  <code>{rank_bar_str}</code>"
         f"{rank_progress}\n\n"
-        f"{THIN_DIVIDER}\n"
-        f"💎 <b>ПОДПИСКА:</b>\n"
-        f"  Тариф:     {sub_emoji} <b>{u['sub_type'].upper()}</b>\n"
-        f"  Лимит:     <b>{sub_limit} сигналов / день</b>\n"
-        f"  Истекает:  <b>{expiry_str}</b>"
+        f"{SDIV}\n"
+        f"💎 <b>Подписка:</b> {sub_emoji} <b>{u['sub_type'].upper()}</b>\n"
+        f"  Лимит:    <b>{sub_limit} сиг./день</b>\n"
+        f"  Истекает: <b>{expiry_str}</b>"
         f"{days_info}\n\n"
-        f"{THIN_DIVIDER}\n"
-        f"📈 <b>ТОРГОВАЯ АКТИВНОСТЬ:</b>\n"
-        f"  Всего сигналов:   <b>{u['signals']}</b>\n"
-        f"  Сегодня:\n"
+        f"{SDIV}\n"
+        f"📈 <b>Активность:</b>\n"
+        f"  Всего: <b>{u['signals']}</b>  ·  Сегодня:\n"
         f"  <code>[{daily_bar}]</code> <b>{u['daily_count']} / {sub_limit}</b>\n\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"🌐 Рынок: <b>🟢 Работает 24/7</b>\n"
-        f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>ОГРАНИЧЕНА ❌</b>'}\n\n"
-        f"🧮 <i>Используйте калькулятор лота для правильного мани-менеджмента:</i>",
+        f"{DIV}\n"
+        f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>❌ Нет доступа</b>'}\n\n"
+        f"<i>Рассчитайте оптимальный лот:</i>",
         reply_markup=profile_kb,
         parse_mode="HTML"
     )
@@ -1526,9 +1439,9 @@ async def open_lot_calc_callback(callback: CallbackQuery):
     pending_lot_calc.add(callback.from_user.id)
     await callback.message.answer(
         "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
-        + PREMIUM_DIVIDER + "\n\n"
-        "Введите ваш <b>текущий баланс в долларах</b> (только цифры):\n\n"
-        "<i>Пример: 100 или 500 или 1250</i>",
+        f"{DIV}\n\n"
+        "Введите <b>баланс в долларах</b>:\n\n"
+        "<i>Пример: 100 или 500</i>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -1568,31 +1481,23 @@ async def stats(message: Message):
         hourly_bars += f"  {h:02d}:00  <code>{bar_h}</code>\n"
 
     await message.answer(
-        f"📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ТЕРМИНАЛА</b>\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"\n🕐 <b>За последние 24 часа:</b>\n\n"
-        f"  WinRate (Smart Precision):\n"
-        f"  <code>[{wr_bar}] {win_rate}%</code>\n\n"
-        f"  🟢 Профитных сделок:  <b>{plus_deals:,}</b>\n"
-        f"  🔴 Убыточных сделок:  <b>{minus_deals:,}</b>\n"
-        f"  🔁 Возвратов:         <b>{refunds:,}</b>\n"
-        f"  📦 Всего сигналов:    <b>{total_day:,}</b>\n\n"
-        f"{THIN_DIVIDER}\n"
-        f"⚡ <b>ПОКАЗАТЕЛИ СИСТЕМЫ:</b>\n\n"
-        f"  Средний ROI:          <b>{avg_profit}%</b>\n"
-        f"  Лучшая пара дня:      <b>{best_pair}</b>\n"
-        f"  Пик активности:       <b>{peak_hour}:00–{peak_hour+1}:00</b>\n"
-        f"  Алгоритм:             <b>Smart Precision OTC v4.0</b>\n\n"
-        f"{THIN_DIVIDER}\n"
-        f"📈 <b>АКТИВНОСТЬ ПО ЧАСАМ (МСК):</b>\n\n"
+        f"📊 <b>СТАТИСТИКА ТЕРМИНАЛА</b>\n"
+        f"{DIV}\n\n"
+        f"WinRate (Smart Precision):\n"
+        f"<code>[{wr_bar}] {win_rate}%</code>\n\n"
+        f"🟢 Профит: <b>{plus_deals:,}</b>  🔴 Убыток: <b>{minus_deals:,}</b>  🔁 Возврат: <b>{refunds:,}</b>\n"
+        f"📦 Сигналов: <b>{total_day:,}</b>\n\n"
+        f"{SDIV}\n"
+        f"⚡ <b>Система:</b>\n"
+        f"  ROI:        <b>{avg_profit}%</b>\n"
+        f"  Топ пара:   <b>{best_pair}</b>\n"
+        f"  Пик:        <b>{peak_hour}:00–{peak_hour+1}:00</b>\n\n"
+        f"{SDIV}\n"
+        f"📈 <b>Активность (МСК):</b>\n\n"
         f"{hourly_bars}\n"
-        f"{THIN_DIVIDER}\n"
-        f"👥 <b>СООБЩЕСТВО:</b>\n\n"
-        f"  Всего трейдеров:      <b>{total_users + 152:,}</b>\n"
-        f"  Активных (24ч):       <b>{active_users + 94:,}</b>\n\n"
-        f"{PREMIUM_DIVIDER}\n"
-        f"<i>📅 Сводка обновлена: {datetime.now().strftime('%d.%m.%Y %H:%M')} (МСК)\n"
-        f"Данные формируются по пулу всех торговых сессий на Pocket Option OTC.</i>",
+        f"{SDIV}\n"
+        f"👥 Трейдеров: <b>{total_users + 152:,}</b>  ·  Активных: <b>{active_users + 94:,}</b>\n\n"
+        f"<i>📅 {datetime.now().strftime('%d.%m.%Y %H:%M')} МСК</i>",
         parse_mode="HTML"
     )
     random.seed()
@@ -1609,12 +1514,10 @@ async def main():
     print("     FILTER: 3/6 blocks minimum")
     print("  💱 OTC PAIRS: 12 instruments with country flags")
     print("  ⏱ TIMEFRAMES: 3s / 15s / 30s / 1min")
-    print("  🎹 UI: 2-column pair selection keyboard")
-    print("  📅 SCHEDULE: MON-SUN 24/7")
+    print("  📦 LIMITS: FREE=15 | JUNIOR=50 | PRO=100")
     print("=" * 60)
 
     init_db()
-
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
