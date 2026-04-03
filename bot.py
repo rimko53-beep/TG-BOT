@@ -591,7 +591,7 @@ async def compare_plans(callback: CallbackQuery):
         f"{DIV}\n\n"
         "<code>"
         "Функция           FREE  JUN  PRO\n"
-        "─────────────────────────────────\n"
+        "───────────────────────────────\n"
         "Сигналов/день       15   50  100\n"
         "OTC-анализ          ✅   ✅   ✅\n"
         "RSI/EMA/MACD        ✅   ✅   ✅\n"
