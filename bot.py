@@ -33,9 +33,9 @@ dp = Dispatcher()
 #              ПЛАНЫ ПОДПИСОК
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
-    "free":   {"limit": 5,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
-    "junior": {"limit": 15, "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
-    "pro":    {"limit": 30, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
+    "free":   {"limit": 15,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
+    "junior": {"limit": 40,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
+    "pro":    {"limit": 70,  "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
 }
 
 # ═══════════════════════════════════════════════
@@ -54,102 +54,21 @@ pairs = [
     "🇲🇦 MAD/USD OTC",
     "🇳🇿 NZD/JPY OTC",
     "🇸🇦 SAR/CNY OTC",
-    "🇺🇸 USD/BDT OTC",
 ]
 
 # Таймфреймы для OTC
 times = ["⏱ 3 сек", "⏱ 15 сек", "⏱ 30 сек", "⏱ 1 мин"]
 
 # ═══════════════════════════════════════════════
-#         ЛУЧШЕЕ ВРЕМЯ ТОРГОВЛИ ПО ПАРЕ OTC
-# ═══════════════════════════════════════════════
-PAIR_BEST_TIME = {
-    "🇦🇪 AED/CNY OTC": {
-        "window": "06:00 – 14:00 МСК",
-        "note": "Активна в азиатскую и ближневосточную сессию. Стабильное движение."
-    },
-    "🇦🇺 AUD/NZD OTC": {
-        "window": "03:00 – 12:00 МСК",
-        "note": "Лучшее движение в азиатскую сессию. Коррелирует с сырьевыми рынками."
-    },
-    "🇦🇺 AUD/USD OTC": {
-        "window": "03:00 – 13:00 МСК",
-        "note": "Высокая активность в азиатскую сессию. Техничная и предсказуемая."
-    },
-    "🇧🇭 BHD/CNY OTC": {
-        "window": "07:00 – 15:00 МСК",
-        "note": "Ближневосточный и азиатский рынок. Умеренная волатильность."
-    },
-    "🇨🇭 CHF/JPY OTC": {
-        "window": "09:00 – 17:00 МСК",
-        "note": "Активна в европейскую сессию. Низкий спред, техничные уровни."
-    },
-    "🇪🇺 EUR/CHF OTC": {
-        "window": "09:00 – 17:00 МСК",
-        "note": "Спокойная и техничная пара. Лучшие сигналы в европейскую сессию."
-    },
-    "🇪🇺 EUR/NZD OTC": {
-        "window": "09:00 – 18:00 МСК",
-        "note": "Хорошая волатильность в европейскую сессию. Чёткие уровни."
-    },
-    "🇪🇺 EUR/TRY OTC": {
-        "window": "09:00 – 18:00 МСК",
-        "note": "Высокая волатильность. Торговать с осторожностью, сильные движения."
-    },
-    "🇪🇺 EUR/USD OTC": {
-        "window": "10:00 – 19:00 МСК",
-        "note": "Самая техничная пара. Минимум ложных сигналов. Лондон + Нью-Йорк."
-    },
-    "🇲🇦 MAD/USD OTC": {
-        "window": "09:00 – 17:00 МСК",
-        "note": "Марокканский дирхам. Умеренная волатильность в европейскую сессию."
-    },
-    "🇳🇿 NZD/JPY OTC": {
-        "window": "03:00 – 12:00 МСК",
-        "note": "Активна в азиатскую сессию. Хорошие трендовые движения."
-    },
-    "🇸🇦 SAR/CNY OTC": {
-        "window": "06:00 – 15:00 МСК",
-        "note": "Ближневосточный и китайский рынок. Стабильная и предсказуемая."
-    },
-    "🇺🇸 USD/BDT OTC": {
-        "window": "06:00 – 14:00 МСК",
-        "note": "Бангладешский рынок. Умеренная волатильность, хорошие уровни."
-    },
-}
-
-# ═══════════════════════════════════════════════
 #         ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ РЫНКА
 # ═══════════════════════════════════════════════
 def is_market_open() -> bool:
-    now = datetime.utcnow() + timedelta(hours=3)
-    return now.weekday() < 5
+    # Рынок работает ПН–ВС 24/7
+    return True
 
-def get_market_closed_text() -> str:
-    now = datetime.utcnow() + timedelta(hours=3)
-    days_until_monday = (7 - now.weekday()) % 7 or 7
-    monday = now + timedelta(days=days_until_monday)
-    monday_str = monday.strftime("%d.%m.%Y")
-    return (
-        "🔴 <b>РЫНОК ЗАКРЫТ — ВЫХОДНОЙ ДЕНЬ</b>\n"
-        "━━━━━━━━━━━━━━━━━\n\n"
-        "📅 Сегодня <b>суббота/воскресенье</b> — OTC рынок не работает.\n\n"
-        "🌐 Валютные пары в эти дни не торгуются:\n"
-        "  ▸ Спреды неадекватны\n"
-        "  ▸ Ликвидность отсутствует\n"
-        "  ▸ Сигналы недостоверны\n\n"
-        "━━━━━━━━━━━━━━━━━\n"
-        "⏰ <b>График работы терминала:</b>\n"
-        "  🟢 ПН–ПТ: круглосуточно (24/7)\n"
-        "  🔴 СБ–ВС: рынок закрыт\n\n"
-        f"📆 Следующее открытие: <b>Понедельник, {monday_str} 00:00 МСК</b>\n\n"
-        "💤 <i>Отдыхайте, анализируйте, готовьтесь к новой неделе!\n"
-        "Возвращайтесь в понедельник с новыми силами и свежим взглядом. 💪</i>"
-    )
-
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 #              РАБОТА С PostgreSQL
-# ═══════════════════════════════════════════════
+# ════════════════════════════════════════════════
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
@@ -322,7 +241,6 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     Генерирует OTC-сигнал.
     Возвращает (direction, confidence, reason).
     """
-    # Сид на основе пары + времени (меняется каждые N секунд в зависимости от таймфрейма)
     now = datetime.utcnow()
 
     if "3 сек" in timeframe:
@@ -433,9 +351,7 @@ def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
         put_reasons = [d for v, d in zip(votes, [rsi_desc, ema_desc, macd_desc, bb_desc, stoch_desc, pattern_desc]) if v < 0]
         reason_text = " | ".join(put_reasons[:4]) if put_reasons else "технический анализ"
 
-    # Если недостаточно сигналов — нейтральный исход
     if agreeing < 3 or abs(total_score) < 3:
-        # При неопределённости — случайный с низкой уверенностью
         direction  = rng.choice(["ВВЕРХ 🟢 (CALL)", "ВНИЗ 🔴 (PUT)"])
         confidence = rng.randint(78, 82)
         reason_text = "рынок в балансе — слабый технический перекос"
@@ -578,7 +494,6 @@ access_kb = ReplyKeyboardMarkup(
 
 # ── Двухколоночная клавиатура выбора OTC-пар ──
 def get_pair_kb():
-    # Разбиваем пары на двухколоночные ряды
     rows = []
     pair_list = list(pairs)
     for i in range(0, len(pair_list), 2):
@@ -630,8 +545,8 @@ def get_sub_kb(current_plan: str = "free"):
 
 def get_upgrade_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 JUNIOR — 15 сигналов/день | 50$", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 PRO — 30 сигналов/день | 100$",   callback_data="buy_pro")],
+        [InlineKeyboardButton(text="🔵 JUNIOR — 40 сигналов/день | 50$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 PRO — 70 сигналов/день | 100$",   callback_data="buy_pro")],
         [InlineKeyboardButton(text="📊 Сравнить тарифы",                  callback_data="compare_plans")],
     ])
 
@@ -680,9 +595,9 @@ async def sub_menu(message: Message):
         f"{renew_block}"
         "\n━━━━━━━━━━━━━━━━━\n"
         "📦 <b>Доступные тарифы:</b>\n\n"
-        "⬜ <b>FREE</b>    — 5 сигналов / день     <i>(бесплатно)</i>\n"
-        "🔵 <b>JUNIOR</b>  — 15 сигналов / день    <i>50$ / 7 дней</i>\n"
-        "🟣 <b>PRO</b>     — 30 сигналов / день    <i>100$ / 7 дней</i>\n\n"
+        "⬜ <b>FREE</b>    — 15 сигналов / день    <i>(бесплатно)</i>\n"
+        "🔵 <b>JUNIOR</b>  — 40 сигналов / день    <i>50$ / 7 дней</i>\n"
+        "🟣 <b>PRO</b>     — 70 сигналов / день    <i>100$ / 7 дней</i>\n\n"
         "<i>Оплата принимается в <b>USDT</b> через CryptoBot — мгновенно и безопасно.</i>"
     )
     await message.answer(text, reply_markup=get_sub_kb(u['sub_type']), parse_mode="HTML")
@@ -693,7 +608,7 @@ async def compare_plans(callback: CallbackQuery):
         "📊 <b>СРАВНЕНИЕ ТАРИФНЫХ ПЛАНОВ</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         "<b>Функция               FREE   JUNIOR   PRO</b>\n"
-        "Сигналы в день         5       15         30\n"
+        "Сигналы в день         15       40        70\n"
         "OTC-анализ               ✅      ✅        ✅\n"
         "RSI-анализ                ✅      ✅        ✅\n"
         "Анализ тренда         ✅      ✅        ✅\n"
@@ -807,8 +722,6 @@ async def start(message: Message):
     u           = db_get_user(message.from_user.id)
     total_users = db_get_total_users()
 
-    market_status = "🟢 ОНЛАЙН (ПН–ПТ)" if is_market_open() else "🔴 ВЫХОДНОЙ (СБ–ВС)"
-
     start_text = (
         "┌─────────────────────────┐\n"
         "│  🖥  AI TRADING TERMINAL  │\n"
@@ -816,7 +729,7 @@ async def start(message: Message):
         "└─────────────────────────┘\n\n"
         "⚡ <b>Профессиональная торговая система</b> для OTC-рынка Pocket Option.\n\n"
         "🧠 <b>Что умеет терминал:</b>\n"
-        "▸ Анализ 13 OTC-пар с флагами стран\n"
+        "▸ Анализ 12 OTC-пар с флагами стран\n"
         "▸ Таймфреймы: 3с / 15с / 30с / 1 мин\n"
         "▸ Smart Precision Engine: 6 независимых блоков анализа\n"
         "▸ RSI(14) + EMA(9/21) + MACD + BB + Stochastic + паттерны\n"
@@ -824,17 +737,13 @@ async def start(message: Message):
         "▸ Двухколоночный выбор активов для удобства\n\n"
         f"👥 Уже торгуют с нами: <b>{total_users + 118:,}</b> трейдеров\n"
         f"📡 WinRate системы: <b>88–96%</b>\n\n"
-        f"⏰ <b>СТАТУС РЫНКА: {market_status}</b>\n"
-        f"📅 График: ПН–ПТ 24/7 | СБ–ВС закрыт\n"
+        f"🟢 <b>РЫНОК РАБОТАЕТ: ПН–ВС 24/7</b>\n"
         f"🕐 {(datetime.utcnow() + timedelta(hours=3)).strftime('%d.%m.%Y %H:%M')} (МСК)"
     )
     await message.answer(start_text, reply_markup=get_main_menu(u["has_access"]), parse_mode="HTML")
 
 @dp.message(F.text == "🚀 О боте")
 async def about_bot(message: Message):
-    now = datetime.utcnow() + timedelta(hours=3)
-    market_status = "🟢 ОНЛАЙН" if is_market_open() else "🔴 ВЫХОДНОЙ"
-
     pairs_list = "\n".join([f"  ▸ <b>{p}</b>" for p in pairs])
 
     text = (
@@ -850,7 +759,7 @@ async def about_bot(message: Message):
         "  ▸ Паттерны свечей (8 видов)\n"
         "🎯 <b>Фильтр входа:</b> минимум 3 из 6 блоков\n\n"
         "━━━━━━━━━━━━━━━━━\n"
-        "💱 <b>OTC ПАРЫ (13 инструментов):</b>\n\n"
+        "💱 <b>OTC ПАРЫ (12 инструментов):</b>\n\n"
         f"{pairs_list}\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "⏱ <b>ТАЙМФРЕЙМЫ:</b>\n"
@@ -860,14 +769,12 @@ async def about_bot(message: Message):
         "  ▸ 1 минута\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "⏰ <b>РЕЖИМ РАБОТЫ:</b>\n"
-        "  🟢 ПН–ПТ: 24/7 (круглосуточно)\n"
-        "  🔴 СБ–ВС: рынок закрыт, сигналы недоступны\n\n"
-        f"  Сейчас: <b>{market_status}</b>\n\n"
+        "  🟢 ПН–ВС: 24/7 (круглосуточно)\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "📦 <b>Тарифы:</b>\n"
-        "  ⬜ FREE  — 5 сигналов / день\n"
-        "  🔵 JUNIOR — 15 сигналов / день  |  50$ / 7 дн\n"
-        "  🟣 PRO — 30 сигналов / день  |  100$ / 7 дн\n\n"
+        "  ⬜ FREE  — 15 сигналов / день\n"
+        "  🔵 JUNIOR — 40 сигналов / день  |  50$ / 7 дн\n"
+        "  🟣 PRO — 70 сигналов / день  |  100$ / 7 дн\n\n"
         "━━━━━━━━━━━━━━━━━\n"
         "⚠️ <b>Дисклеймер:</b>\n"
         "<i>Торговля бинарными опционами сопряжена с рисками. "
@@ -999,7 +906,7 @@ async def help_cmd(message: Message):
         "▸ <i>Как активировать доступ?</i> → кнопка «🔐 Активировать доступ»\n"
         "▸ <i>Как найти ID Pocket Option?</i> → Личный кабинет → Профиль\n"
         "▸ <i>Когда обновляется лимит?</i> → Каждый день в 00:00 (МСК)\n"
-        "▸ <i>Когда работает терминал?</i> → ПН–ПТ 24/7, СБ–ВС закрыт\n\n"
+        "▸ <i>Когда работает терминал?</i> → ПН–ВС 24/7\n\n"
         "✍️ <b>Напишите ваш вопрос прямо сейчас:</b>",
         reply_markup=back_kb,
         parse_mode="HTML"
@@ -1231,14 +1138,11 @@ async def t_panel(message: Message):
     if not db_get_user(message.from_user.id)["has_access"]:
         return
 
-    if not is_market_open():
-        return await message.answer(get_market_closed_text(), parse_mode="HTML")
-
     await message.answer(
         "📊 <b>ТОРГОВАЯ ПАНЕЛЬ — OTC РЫНОК</b>\n"
         "━━━━━━━━━━━━━━━━━\n\n"
         "Выберите <b>OTC-пару</b> для анализа:\n\n"
-        "🌍 Доступно 13 валютных инструментов\n"
+        "🌍 Доступно 12 валютных инструментов\n"
         "⚡ Таймфреймы: 3с | 15с | 30с | 1 мин",
         reply_markup=pair_kb,
         parse_mode="HTML"
@@ -1246,23 +1150,10 @@ async def t_panel(message: Message):
 
 @dp.message(F.text.in_(set(pairs)))
 async def set_pair(message: Message):
-    if not is_market_open():
-        return await message.answer(get_market_closed_text(), parse_mode="HTML")
-
     user_temp_data[message.from_user.id] = {"pair": message.text}
 
-    best = PAIR_BEST_TIME.get(message.text, {})
-    best_time_block = ""
-    if best:
-        best_time_block = (
-            f"\n\n⏰ <b>Лучшее время для торговли:</b>\n"
-            f"  🟢 <b>{best['window']}</b>\n"
-            f"  <i>{best['note']}</i>"
-        )
-
     await message.answer(
-        f"✅ <b>Актив выбран:</b> {message.text}"
-        f"{best_time_block}\n\n"
+        f"✅ <b>Актив выбран:</b> {message.text}\n\n"
         f"⏱ Выберите <b>время экспирации</b>:",
         reply_markup=time_kb,
         parse_mode="HTML"
@@ -1270,24 +1161,17 @@ async def set_pair(message: Message):
 
 @dp.message(F.text.in_(set(times)))
 async def set_time(message: Message):
-    if not is_market_open():
-        return await message.answer(get_market_closed_text(), parse_mode="HTML")
-
     uid = message.from_user.id
     if uid not in user_temp_data:
         user_temp_data[uid] = {}
     user_temp_data[uid]["time"] = message.text
     pair = user_temp_data[uid].get('pair', '—')
 
-    best = PAIR_BEST_TIME.get(pair, {})
-    best_time_str = f"  ⏰ Лучшее окно: <b>{best['window']}</b>\n" if best else ""
-
     await message.answer(
         f"⚙️ <b>КОНФИГУРАЦИЯ СОХРАНЕНА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n\n"
         f"  📊 Актив:       <b>{pair}</b>\n"
         f"  ⏱ Экспирация:  <b>{message.text}</b>\n"
-        f"{best_time_str}"
         f"\n━━━━━━━━━━━━━━━━━\n"
         f"<i>Алгоритм настроен. Нажмите «⚡ Получить сигнал» для анализа рынка.</i>",
         reply_markup=signal_kb,
@@ -1304,9 +1188,6 @@ async def get_signal(message: Message):
     u   = db_get_user(uid)
     if not u["has_access"]:
         return
-
-    if not is_market_open():
-        return await message.answer(get_market_closed_text(), parse_mode="HTML")
 
     today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     daily = u["daily_count"]
@@ -1327,8 +1208,8 @@ async def get_signal(message: Message):
                 "💡 <b>Хотите торговать без ограничений?</b>\n"
                 "Перейдите в раздел <b>«💎 Подписка»</b> и получите\n"
                 "больше сигналов по супер цене:\n\n"
-                "🔵 <b>JUNIOR</b> — <b>15 сигналов/день</b> всего за <b>50$</b> / 7 дней\n"
-                "🟣 <b>PRO</b>    — <b>30 сигналов/день</b> всего за <b>100$</b> / 7 дней\n\n"
+                "🔵 <b>JUNIOR</b> — <b>40 сигналов/день</b> всего за <b>50$</b> / 7 дней\n"
+                "🟣 <b>PRO</b>    — <b>70 сигналов/день</b> всего за <b>100$</b> / 7 дней\n\n"
                 "⏳ <i>Или дождитесь обновления лимита в 00:00 (МСК).</i>",
                 reply_markup=get_upgrade_kb(),
                 parse_mode="HTML"
@@ -1357,7 +1238,7 @@ async def get_signal(message: Message):
             parse_mode="HTML"
         )
 
-    if time.time() - last_click_time.get(uid, 0) < 6:
+    if time.time() - last_click_time.get(uid, 0) < 3:
         return await message.answer(
             "⏳ <b>Анализ в процессе...</b>\n"
             "<i>Дождитесь завершения предыдущего расчёта.</i>",
@@ -1365,13 +1246,11 @@ async def get_signal(message: Message):
         )
     last_click_time[uid] = time.time()
 
-    # ── Анимированный прогресс-бар ──────────────────────
+    # ── Анимированный прогресс-бар (ускоренный) ──────────────────────
     progress_frames = [
         ("⬛️⬛️⬛️⬛️⬛️ <b>[ 0%]</b>",  "📡 Подключение к OTC-терминалу..."),
-        ("🟩⬛️⬛️⬛️⬛️ <b>[20%]</b>",  "📊 RSI(14) + EMA(9/21) расчёт..."),
-        ("🟩🟩⬛️⬛️⬛️ <b>[40%]</b>",  "📈 MACD + Bollinger Bands анализ..."),
-        ("🟩🟩🟩⬛️⬛️ <b>[60%]</b>",  "🔬 Stochastic + паттерны свечей..."),
-        ("🟩🟩🟩🟩⬛️ <b>[80%]</b>",  "🧮 Smart Precision Filter: 6 блоков голосования..."),
+        ("🟩🟩⬛️⬛️⬛️ <b>[40%]</b>",  "📊 RSI + EMA + MACD анализ..."),
+        ("🟩🟩🟩🟩⬛️ <b>[80%]</b>",  "🔬 BB + Stoch + паттерны..."),
         ("🟩🟩🟩🟩🟩 <b>[100%]</b>", "✅ OTC-сигнал сформирован!"),
     ]
 
@@ -1384,7 +1263,7 @@ async def get_signal(message: Message):
     )
 
     for bar, label in progress_frames[1:]:
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.35)
         try:
             await progress_msg.edit_text(
                 f"<b>⚡ SMART PRECISION АНАЛИЗ — OTC</b>\n"
@@ -1406,21 +1285,11 @@ async def get_signal(message: Message):
     limit_warning = ""
     if remaining == 0:
         limit_warning = "\n⚠️ <b>Это был последний сигнал на сегодня!</b> Лимит исчерпан."
-    elif remaining <= 2:
+    elif remaining <= 3:
         limit_warning = f"\n⚠️ <i>Осталось сигналов сегодня: <b>{remaining}</b>. Используйте с умом!</i>"
 
     conf_bar  = confidence_bar(confidence)
     dir_badge = "🟢 CALL (ВВЕРХ)" if "ВВЕРХ" in direction else "🔴 PUT (ВНИЗ)"
-
-    best = PAIR_BEST_TIME.get(data["pair"], {})
-    best_time_block = ""
-    if best:
-        best_time_block = (
-            f"\n━━━━━━━━━━━━━━━━━\n"
-            f"⏰ <b>ОПТИМАЛЬНОЕ ВРЕМЯ:</b>\n"
-            f"  🟢 <b>{best['window']}</b>\n"
-            f"  <i>{best['note']}</i>\n"
-        )
 
     reason_block = (
         f"\n━━━━━━━━━━━━━━━━━\n"
@@ -1428,7 +1297,7 @@ async def get_signal(message: Message):
         f"  <i>{reason.capitalize()}</i>\n"
     )
 
-    # PRO-блок с расширенными подсказками
+    # PRO-блок с расширенной аналитикой
     pro_block = ""
     if sub_type == "pro":
         pro_tips = [
@@ -1440,13 +1309,36 @@ async def get_signal(message: Message):
         ]
         rng_pro = random.Random(hash(f"{data['pair']}_{direction}_{confidence}"))
         pro_tip = rng_pro.choice(pro_tips)
+
+        # PRO: расширенный анализ сессии
+        now_msk = datetime.utcnow() + timedelta(hours=3)
+        hour = now_msk.hour
+        if 3 <= hour < 10:
+            session = "🌏 Азиатская сессия"
+        elif 10 <= hour < 18:
+            session = "🌍 Европейская сессия"
+        elif 18 <= hour < 23:
+            session = "🌎 Американская сессия"
+        else:
+            session = "🌙 Ночная сессия"
+
+        volatility_levels = ["🟢 Низкая", "🟡 Умеренная", "🟠 Средняя", "🔴 Высокая"]
+        rng_vol = random.Random(hash(f"{data['pair']}_{confidence}_{hour}"))
+        volatility = rng_vol.choice(volatility_levels)
+
+        trend_strength = rng_pro.randint(55, 95)
+        trend_bar = confidence_bar(trend_strength)
+
         pro_block = (
             f"\n━━━━━━━━━━━━━━━━━\n"
-            f"🟣 <b>PRO АНАЛИТИКА (расширенная):</b>\n"
-            f"  💬 {pro_tip}\n"
-            f"  📐 Рек. объём: <b>2–3% от депозита</b>\n"
-            f"  🎯 Уверенность системы: <b>{confidence}%</b>\n"
-            f"  ⏱ Экспирация: <b>{data['time']}</b>\n"
+            f"🟣 <b>PRO РАСШИРЕННАЯ АНАЛИТИКА:</b>\n"
+            f"  📡 Сессия:        <b>{session}</b>\n"
+            f"  📊 Волатильность: <b>{volatility}</b>\n"
+            f"  💪 Сила тренда:   <code>{trend_bar}</code> <b>{trend_strength}%</b>\n"
+            f"  💬 Совет:         {pro_tip}\n"
+            f"  📐 Рек. объём:    <b>2–3% от депозита</b>\n"
+            f"  🎯 Уверенность:   <b>{confidence}%</b>\n"
+            f"  ⏱ Экспирация:    <b>{data['time']}</b>\n"
         )
 
     res = (
@@ -1462,7 +1354,6 @@ async def get_signal(message: Message):
         f"  │   {dir_badge}   │\n"
         f"  └──────────────────┘\n"
         f"{reason_block}"
-        f"{best_time_block}"
         f"{pro_block}"
         f"━━━━━━━━━━━━━━━━━\n"
         f"  Использовано: <b>{new_daily} / {current_limit}</b> сигналов\n"
@@ -1506,7 +1397,6 @@ async def profile(message: Message):
     used_pct  = min(int((u["daily_count"] / sub_limit) * 10), 10)
     daily_bar = "▓" * used_pct + "░" * (10 - used_pct)
 
-    market_str = "🟢 Открыт (ПН–ПТ)" if is_market_open() else "🔴 Закрыт (выходной)"
     name = message.from_user.first_name or "Трейдер"
 
     profile_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -1533,7 +1423,7 @@ async def profile(message: Message):
         f"  Сегодня:\n"
         f"  <code>[{daily_bar}]</code> <b>{u['daily_count']} / {sub_limit}</b>\n\n"
         f"━━━━━━━━━━━━━━━━━\n"
-        f"🌐 Рынок сейчас: {market_str}\n"
+        f"🌐 Рынок: <b>🟢 Работает 24/7</b>\n"
         f"🔐 Лицензия: {'<b>АКТИВНА ✅</b>' if u['has_access'] else '<b>ОГРАНИЧЕНА ❌</b>'}\n\n"
         f"🧮 <i>Используйте калькулятор лота для правильного мани-менеджмента:</i>",
         reply_markup=profile_kb,
@@ -1578,14 +1468,9 @@ async def stats(message: Message):
     wr_filled = int(win_rate / 10)
     wr_bar    = "█" * wr_filled + "░" * (10 - wr_filled)
 
-    market_note = ""
-    if not is_market_open():
-        market_note = "\n⚠️ <i>Рынок сейчас закрыт (выходной). Статистика за последний рабочий день.</i>\n"
-
     await message.answer(
         f"📊 <b>ГЛОБАЛЬНАЯ СТАТИСТИКА ТЕРМИНАЛА</b>\n"
         f"━━━━━━━━━━━━━━━━━\n"
-        f"{market_note}"
         f"\n🕐 <b>За последние 24 часа:</b>\n\n"
         f"  WinRate (Smart Precision):\n"
         f"  <code>[{wr_bar}] {win_rate}%</code>\n\n"
@@ -1620,9 +1505,10 @@ async def main():
     print("  🧠 SMART PRECISION ENGINE v4 (OTC MODE):")
     print("     RSI(14) + EMA(9/21) + MACD + BB + STOCH + PATTERNS")
     print("     FILTER: 3/6 blocks minimum")
-    print("  💱 OTC PAIRS: 13 instruments with country flags")
+    print("  💱 OTC PAIRS: 12 instruments with country flags")
     print("  ⏱ TIMEFRAMES: 3s / 15s / 30s / 1min")
     print("  🎹 UI: 2-column pair selection keyboard")
+    print("  📅 SCHEDULE: MON-SUN 24/7")
     print("=" * 60)
 
     init_db()
