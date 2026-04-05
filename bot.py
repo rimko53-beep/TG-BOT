@@ -52,12 +52,12 @@ pairs = [
     "🇨🇦 CAD/JPY OTC",
     "🇪🇺 EUR/USD OTC",
     "🇲🇦 MAD/USD OTC",
-    "🇳🇿 NZD/JPY OTC",
+    "🇦🇺 AUD/CAD OTC",
     "🇸🇦 SAR/CNY OTC",
 ]
 
 # Таймфреймы для OTC
-times = ["⏱ 3 сек", "⏱ 15 сек", "⏱ 30 сек", "⏱ 1 мин"]
+times = ["⏱ 5 сек", "⏱ 10 сек", "⏱ 15 сек", "⏱ 30 сек"]
 
 # ═══════════════════════════════════════════════
 #         ПРОВЕРКА РАБОЧЕГО ВРЕМЕНИ РЫНКА
@@ -233,8 +233,10 @@ async def check_invoice(invoice_id):
 def generate_otc_signal(pair: str, timeframe: str) -> tuple[str, int, str]:
     now = datetime.utcnow()
 
-    if "3 сек" in timeframe:
-        bucket = int(now.timestamp() / 3)
+    if "5 сек" in timeframe:
+        bucket = int(now.timestamp() / 5)
+    elif "10 сек" in timeframe:
+        bucket = int(now.timestamp() / 10)
     elif "15 сек" in timeframe:
         bucket = int(now.timestamp() / 15)
     elif "30 сек" in timeframe:
@@ -494,8 +496,8 @@ pair_kb = get_pair_kb()
 
 time_kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="⏱ 3 сек"),  KeyboardButton(text="⏱ 15 сек")],
-        [KeyboardButton(text="⏱ 30 сек"), KeyboardButton(text="⏱ 1 мин")],
+        [KeyboardButton(text="⏱ 5 сек"),  KeyboardButton(text="⏱ 10 сек")],
+        [KeyboardButton(text="⏱ 15 сек"), KeyboardButton(text="⏱ 30 сек")],
         [KeyboardButton(text="⬅️ Назад")]
     ],
     resize_keyboard=True
@@ -720,7 +722,7 @@ async def start(message: Message):
         "⚡ <b>Профессиональная система сигналов</b> для OTC-рынка Pocket Option.\n\n"
         "🧠 <b>Smart Precision Engine:</b>\n"
         "▸ 12 OTC-пар с флагами стран\n"
-        "▸ Таймфреймы: 3с / 15с / 30с / 1 мин\n"
+        "▸ Таймфреймы: 5с / 10с / 15с / 30с\n"
         "▸ 6 блоков анализа (RSI + EMA + MACD + BB + Stoch + паттерны)\n"
         "▸ Уверенность ИИ: 78–96%\n\n"
         f"👥 Трейдеров: <b>{total_users + 152:,}</b>\n"
@@ -749,7 +751,7 @@ async def about_bot(message: Message):
         "💱 <b>OTC ПАРЫ (12 инструментов):</b>\n\n"
         f"{pairs_list}\n\n"
         f"{DIV}\n"
-        "⏱ <b>Таймфреймы:</b> 3с · 15с · 30с · 1 мин\n"
+        "⏱ <b>Таймфреймы:</b> 5с · 10с · 15с · 30с\n"
         "⏰ <b>Режим:</b> ПН–ВС 24/7\n\n"
         f"{DIV}\n"
         "📦 <b>Тарифы:</b>\n"
@@ -772,7 +774,7 @@ async def lot_calculator(message: Message):
         "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
         f"{DIV}\n\n"
         "Введите <b>баланс в долларах</b>:\n\n"
-        "<i>Пример: 100 или 500</i>",
+        "<i>Минимум: 50$  |  Пример: 100 или 500</i>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -797,6 +799,26 @@ async def process_lot_calc(message: Message):
         return await message.answer(
             "❌ Введите корректную сумму (только цифры > 0).\n"
             "<i>Пример: 100</i>",
+            parse_mode="HTML"
+        )
+
+    if balance < 50:
+        return await message.answer(
+            "⚠️ <b>СЛИШКОМ МАЛЕНЬКИЙ БАЛАНС</b>\n"
+            f"{DIV}\n\n"
+            f"  Вы ввели: <b>{balance:,.2f}$</b>\n"
+            f"  Минимум: <b>50$</b>\n\n"
+            f"{SDIV}\n"
+            "❌ С таким балансом торговать <b>нельзя</b>.\n\n"
+            "При балансе ниже 50$ вы не сможете соблюдать базовые правила мани-менеджмента:\n\n"
+            "▸ Минимальная сделка на Pocket Option составляет <b>1$</b>\n"
+            "▸ Рекомендуемый риск на сделку — <b>1–2% от депозита</b>\n"
+            "▸ При балансе менее 50$ даже 1$ сделка = <b>2%+ риска</b>, что ведёт к быстрому сливу\n"
+            "▸ Серия из 5–7 убыточных сделок полностью уничтожит депозит\n\n"
+            f"{SDIV}\n"
+            "💡 <b>Рекомендация:</b> пополните счёт до <b>минимум 50$</b>, "
+            "оптимально — от <b>100$</b> для комфортной торговли.\n\n"
+            "<i>Введите корректную сумму (от 50$):</i>",
             parse_mode="HTML"
         )
 
@@ -1443,7 +1465,7 @@ async def open_lot_calc_callback(callback: CallbackQuery):
         "🧮 <b>КАЛЬКУЛЯТОР ЛОТА</b>\n"
         f"{DIV}\n\n"
         "Введите <b>баланс в долларах</b>:\n\n"
-        "<i>Пример: 100 или 500</i>",
+        "<i>Минимум: 50$  |  Пример: 100 или 500</i>",
         reply_markup=back_kb,
         parse_mode="HTML"
     )
@@ -1515,7 +1537,7 @@ async def main():
     print("     RSI(14) + EMA(9/21) + MACD + BB + STOCH + PATTERNS")
     print("     FILTER: 3/6 blocks minimum")
     print("  💱 OTC PAIRS: 12 instruments with country flags")
-    print("  ⏱ TIMEFRAMES: 3s / 15s / 30s / 1min")
+    print("  ⏱ TIMEFRAMES: 5s / 10s / 15s / 30s")
     print("  📦 LIMITS: FREE=15 | JUNIOR=50 | PRO=100")
     print("=" * 60)
 
