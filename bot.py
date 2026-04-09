@@ -33,7 +33,7 @@ dp = Dispatcher()
 #              ПЛАНЫ ПОДПИСОК
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
-    "free":   {"limit": 15,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
+    "free":   {"limit": 20,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
     "junior": {"limit": 50,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
     "pro":    {"limit": 100, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
 }
@@ -579,7 +579,7 @@ async def sub_menu(message: Message):
         f"{renew_block}"
         f"\n{DIV}\n"
         "📦 <b>Тарифы:</b>\n\n"
-        "⬜ <b>FREE</b>   — 15 сигналов / день  <i>(бесплатно)</i>\n"
+        "⬜ <b>FREE</b>   — 20 сигналов / день  <i>(бесплатно)</i>\n"
         "🔵 <b>JUNIOR</b> — 50 сигналов / день  <i>50$ / 7 дней</i>\n"
         "🟣 <b>PRO</b>    — 100 сигналов / день  <i>100$ / 7 дней</i>\n\n"
         "<i>Оплата в <b>USDT</b> через CryptoBot — мгновенно.</i>"
@@ -594,7 +594,7 @@ async def compare_plans(callback: CallbackQuery):
         "<code>"
         "Функция           FREE  JUN  PRO\n"
         "───────────────────────────────\n"
-        "Сигналов/день       15   50  100\n"
+        "Сигналов/день       20   50  100\n"
         "OTC-анализ          ✅   ✅   ✅\n"
         "RSI/EMA/MACD        ✅   ✅   ✅\n"
         "Уверенность ИИ      ✅   ✅   ✅\n"
@@ -755,7 +755,7 @@ async def about_bot(message: Message):
         "⏰ <b>Режим:</b> ПН–ВС 24/7\n\n"
         f"{DIV}\n"
         "📦 <b>Тарифы:</b>\n"
-        "  ⬜ FREE   — 15 сигналов / день\n"
+        "  ⬜ FREE   — 20 сигналов / день\n"
         "  🔵 JUNIOR — 50 сигналов / день  |  50$ / 7 дн\n"
         "  🟣 PRO    — 100 сигналов / день  |  100$ / 7 дн\n\n"
         f"{DIV}\n"
@@ -1538,7 +1538,7 @@ async def main():
     print("     FILTER: 3/6 blocks minimum")
     print("  💱 OTC PAIRS: 12 instruments with country flags")
     print("  ⏱ TIMEFRAMES: 5s / 10s / 15s / 30s")
-    print("  📦 LIMITS: FREE=15 | JUNIOR=50 | PRO=100")
+    print("  📦 LIMITS: FREE=20 | JUNIOR=50 | PRO=100")
     print("=" * 60)
 
     init_db()
