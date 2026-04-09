@@ -34,8 +34,8 @@ dp = Dispatcher()
 # ═══════════════════════════════════════════════
 SUBSCRIPTION_PLANS = {
     "free":   {"limit": 20,  "name": "FREE",   "price": 0,   "emoji": "⬜"},
-    "junior": {"limit": 50,  "name": "JUNIOR",  "price": 50,  "duration": 7, "emoji": "🔵"},
-    "pro":    {"limit": 100, "name": "PRO",     "price": 100, "duration": 7, "emoji": "🟣"},
+    "junior": {"limit": 50,  "name": "JUNIOR",  "price": 100,  "duration": 7, "emoji": "🔵"},
+    "pro":    {"limit": 100, "name": "PRO",     "price": 200, "duration": 7, "emoji": "🟣"},
 }
 
 # ═══════════════════════════════════════════════
@@ -517,21 +517,21 @@ back_kb = ReplyKeyboardMarkup(
 def get_sub_kb(current_plan: str = "free"):
     buttons = []
     if current_plan == "free":
-        buttons.append([InlineKeyboardButton(text="🔵 JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
-        buttons.append([InlineKeyboardButton(text="🟣 PRO — 100$ / 7 дней",   callback_data="buy_pro")])
+        buttons.append([InlineKeyboardButton(text="🔵 JUNIOR — 100$ / 7 дней", callback_data="buy_junior")])
+        buttons.append([InlineKeyboardButton(text="🟣 PRO — 200$ / 7 дней",   callback_data="buy_pro")])
     elif current_plan == "junior":
-        buttons.append([InlineKeyboardButton(text="🔄 Продлить JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
-        buttons.append([InlineKeyboardButton(text="⬆️ Улучшить до PRO — 100$ / 7 дней", callback_data="buy_pro")])
+        buttons.append([InlineKeyboardButton(text="🔄 Продлить JUNIOR — 100$ / 7 дней", callback_data="buy_junior")])
+        buttons.append([InlineKeyboardButton(text="⬆️ Улучшить до PRO — 200$ / 7 дней", callback_data="buy_pro")])
     elif current_plan == "pro":
-        buttons.append([InlineKeyboardButton(text="🔄 Продлить PRO — 100$ / 7 дней", callback_data="buy_pro")])
-        buttons.append([InlineKeyboardButton(text="🔵 Сменить на JUNIOR — 50$ / 7 дней", callback_data="buy_junior")])
+        buttons.append([InlineKeyboardButton(text="🔄 Продлить PRO — 200$ / 7 дней", callback_data="buy_pro")])
+        buttons.append([InlineKeyboardButton(text="🔵 Сменить на JUNIOR — 100$ / 7 дней", callback_data="buy_junior")])
     buttons.append([InlineKeyboardButton(text="📊 Сравнить тарифы", callback_data="compare_plans")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_upgrade_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 JUNIOR — 50 сигналов/день | 50$", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 PRO — 100 сигналов/день | 100$",  callback_data="buy_pro")],
+        [InlineKeyboardButton(text="🔵 JUNIOR — 50 сигналов/день | 100$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 PRO — 100 сигналов/день | 200$",  callback_data="buy_pro")],
         [InlineKeyboardButton(text="📊 Сравнить тарифы",                  callback_data="compare_plans")],
     ])
 
@@ -580,8 +580,8 @@ async def sub_menu(message: Message):
         f"\n{DIV}\n"
         "📦 <b>Тарифы:</b>\n\n"
         "⬜ <b>FREE</b>   — 20 сигналов / день  <i>(бесплатно)</i>\n"
-        "🔵 <b>JUNIOR</b> — 50 сигналов / день  <i>50$ / 7 дней</i>\n"
-        "🟣 <b>PRO</b>    — 100 сигналов / день  <i>100$ / 7 дней</i>\n\n"
+        "🔵 <b>JUNIOR</b> — 50 сигналов / день  <i>100$ / 7 дней</i>\n"
+        "🟣 <b>PRO</b>    — 100 сигналов / день  <i>200$ / 7 дней</i>\n\n"
         "<i>Оплата в <b>USDT</b> через CryptoBot — мгновенно.</i>"
     )
     await message.answer(text, reply_markup=get_sub_kb(u['sub_type']), parse_mode="HTML")
@@ -607,15 +607,15 @@ async def compare_plans(callback: CallbackQuery):
         "Объём сделки        ❌   ❌   ✅\n"
         "ТОП стратегии       ❌   ❌   ✅\n"
         "────────────────────────────────\n"
-        "Цена                0$  50$ 100$\n"
+        "Цена                0$ 100$ 200$\n"
         "Срок                ∞  7дн  7дн\n"
         "</code>\n"
         f"{DIV}\n"
         "<i>Больше сигналов = больше возможностей</i>"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 Купить JUNIOR — 50$", callback_data="buy_junior")],
-        [InlineKeyboardButton(text="🟣 Купить PRO — 100$",   callback_data="buy_pro")],
+        [InlineKeyboardButton(text="🔵 Купить JUNIOR — 100$", callback_data="buy_junior")],
+        [InlineKeyboardButton(text="🟣 Купить PRO — 200$",   callback_data="buy_pro")],
     ])
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
@@ -756,8 +756,8 @@ async def about_bot(message: Message):
         f"{DIV}\n"
         "📦 <b>Тарифы:</b>\n"
         "  ⬜ FREE   — 20 сигналов / день\n"
-        "  🔵 JUNIOR — 50 сигналов / день  |  50$ / 7 дн\n"
-        "  🟣 PRO    — 100 сигналов / день  |  100$ / 7 дн\n\n"
+        "  🔵 JUNIOR — 50 сигналов / день  |  100$ / 7 дн\n"
+        "  🟣 PRO    — 100 сигналов / день  |  200$ / 7 дн\n\n"
         f"{DIV}\n"
         "⚠️ <i>Торговля бинарными опционами сопряжена с рисками. "
         "Сигналы носят информационный характер. Соблюдайте мани-менеджмент.</i>"
@@ -1213,8 +1213,8 @@ async def get_signal(message: Message):
                 f"{DIV}\n\n"
                 f"Использовано <b>{current_limit} / {current_limit}</b> бесплатных сигналов.\n\n"
                 "💡 Получите больше сигналов с подпиской:\n\n"
-                "🔵 <b>JUNIOR</b> — <b>50 сигналов/день</b>  |  <b>50$</b>\n"
-                "🟣 <b>PRO</b>    — <b>100 сигналов/день</b>  |  <b>100$</b>\n\n"
+                "🔵 <b>JUNIOR</b> — <b>50 сигналов/день</b>  |  <b>100$</b>\n"
+                "🟣 <b>PRO</b>    — <b>100 сигналов/день</b>  |  <b>200$</b>\n\n"
                 "⏳ <i>Или ждите сброса в 00:00 МСК</i>",
                 reply_markup=get_upgrade_kb(),
                 parse_mode="HTML"
